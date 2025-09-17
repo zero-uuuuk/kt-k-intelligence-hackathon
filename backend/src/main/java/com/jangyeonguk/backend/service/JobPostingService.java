@@ -5,6 +5,7 @@ import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionCriterion;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionCriterionDetail;
 import com.jangyeonguk.backend.domain.jobposting.Company;
 import com.jangyeonguk.backend.domain.jobposting.JobPosting;
+import com.jangyeonguk.backend.domain.jobposting.PostingStatus;
 import com.jangyeonguk.backend.domain.resume.ResumeItem;
 import com.jangyeonguk.backend.domain.resume.ResumeItemCriterion;
 import com.jangyeonguk.backend.dto.jobposting.JobPostingCreateRequestDto;
@@ -14,14 +15,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -340,4 +341,85 @@ public class JobPostingService {
     private String generatePublicLinkUrl(Long jobPostingId) {
         return "http://localhost:3000/apply/" + jobPostingId;
     }
+
+    /**
+     * 채용공고 상태를 현재 시간 기준으로 업데이트
+     */
+    @Transactional
+    public void updateJobPostingStatuses() {
+        log.info("채용공고 상태 업데이트 시작");
+        
+        LocalDateTime now = LocalDateTime.now();
+        List<JobPosting> allJobPostings = jobPostingRepository.findAll();
+        
+        int updatedCount = 0;
+        
+        for (JobPosting jobPosting : allJobPostings) {
+            PostingStatus currentStatus = jobPosting.getPostingStatus();
+            PostingStatus newStatus = determinePostingStatus(jobPosting, now);
+            
+            if (currentStatus != newStatus) {
+                jobPosting.setPostingStatus(newStatus);
+                jobPostingRepository.save(jobPosting);
+                updatedCount++;
+                
+                log.info("채용공고 상태 업데이트 - ID: {}, 제목: {}, {} -> {}", 
+                    jobPosting.getId(), 
+                    jobPosting.getTitle(),
+                    currentStatus.getDescription(), 
+                    newStatus.getDescription());
+            }
+        }
+        
+        log.info("채용공고 상태 업데이트 완료 - 총 {}개 업데이트", updatedCount);
+    }
+
+    /**
+     * 현재 시간 기준으로 채용공고 상태 결정
+     */
+    private PostingStatus determinePostingStatus(JobPosting jobPosting, LocalDateTime now) {
+        LocalDateTime applicationStartDate = jobPosting.getApplicationStartDate();
+        LocalDateTime applicationEndDate = jobPosting.getApplicationEndDate();
+        LocalDateTime evaluationEndDate = jobPosting.getEvaluationEndDate();
+        
+        // null 체크 - 필수 날짜 필드가 null이면 기본값 반환
+        if (applicationStartDate == null || applicationEndDate == null) {
+            log.warn("채용공고 ID: {} - 필수 날짜 필드가 null입니다. applicationStartDate: {}, applicationEndDate: {}", 
+                jobPosting.getId(), applicationStartDate, applicationEndDate);
+            return PostingStatus.SCHEDULED; // 기본값으로 모집예정 반환
+        }
+        
+        // evaluationEndDate가 null인 경우 applicationEndDate로 대체
+        if (evaluationEndDate == null) {
+            log.warn("채용공고 ID: {} - evaluationEndDate가 null입니다. applicationEndDate로 대체합니다.", jobPosting.getId());
+            evaluationEndDate = applicationEndDate;
+        }
+        
+        // 모집 시작 전
+        if (now.isBefore(applicationStartDate)) {
+            return PostingStatus.SCHEDULED;
+        }
+        // 모집 기간 중
+        else if (now.isAfter(applicationStartDate) && now.isBefore(applicationEndDate)) {
+            return PostingStatus.IN_PROGRESS;
+        }
+        // 모집 마감 후 평가 기간 중
+        else if (now.isAfter(applicationEndDate) && now.isBefore(evaluationEndDate)) {
+            return PostingStatus.CLOSED;
+        }
+        // 평가 완료
+        else {
+            return PostingStatus.EVALUATION_COMPLETE;
+        }
+    }
+
+    /**
+     * 매일 00시 00분에 채용공고 상태 업데이트
+     */
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
+    public void scheduledUpdateJobPostingStatuses() {
+        log.info("스케줄된 채용공고 상태 업데이트 실행");
+        updateJobPostingStatuses();
+    }
+
 }
