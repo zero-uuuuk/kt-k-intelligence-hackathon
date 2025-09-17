@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 public class CoverLetterQuestionCriterionResponseDto {
 
     private Long id;
+    private String name;
     private String overallDescription; // 전반적인 설명
     private List<CoverLetterQuestionCriterionDetailResponseDto> details; // 상세 기준 목록
 
@@ -27,6 +28,7 @@ public class CoverLetterQuestionCriterionResponseDto {
     public static CoverLetterQuestionCriterionResponseDto from(com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionCriterion criterion) {
         return CoverLetterQuestionCriterionResponseDto.builder()
                 .id(criterion.getId())
+                .name(criterion.getName())
                 .overallDescription(criterion.getOverallDescription())
                 .details(criterion.getDetails().stream()
                         .map(CoverLetterQuestionCriterionDetailResponseDto::from)

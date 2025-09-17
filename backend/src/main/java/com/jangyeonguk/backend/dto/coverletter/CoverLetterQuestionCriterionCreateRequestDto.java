@@ -14,7 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 public class CoverLetterQuestionCriterionCreateRequestDto {
 
-    private String name; // 평가기준 이름
+    private String name;
     private String overallDescription; // 전반적인 설명
     private List<CoverLetterQuestionCriterionDetailCreateRequestDto> details; // 상세 기준 목록
 }

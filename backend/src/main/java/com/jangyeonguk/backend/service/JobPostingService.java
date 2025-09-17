@@ -11,10 +11,17 @@ import com.jangyeonguk.backend.dto.jobposting.JobPostingCreateRequestDto;
 import com.jangyeonguk.backend.dto.jobposting.JobPostingResponseDto;
 import com.jangyeonguk.backend.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -23,6 +30,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class JobPostingService {
 
     private final JobPostingRepository jobPostingRepository;
@@ -32,6 +40,11 @@ public class JobPostingService {
     private final CoverLetterQuestionCriterionRepository coverLetterQuestionCriterionRepository;
     private final CoverLetterQuestionCriterionDetailRepository coverLetterQuestionCriterionDetailRepository;
     private final CompanyRepository companyRepository;
+
+    @Value("${fastapi.base-url:http://localhost:8000}")
+    private String fastApiBaseUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     /**
      * 채용공고 등록
@@ -145,7 +158,50 @@ public class JobPostingService {
             });
         }
 
-        return JobPostingResponseDto.from(savedJobPosting);
+        // JobPostingResponseDto 생성
+        JobPostingResponseDto response = JobPostingResponseDto.from(savedJobPosting);
+
+        // FAST API에 평가 기준 학습 요청 (동기)
+        try {
+            log.info("평가 기준 학습 시작 - JobPosting ID: {}", savedJobPosting.getId());
+
+            Map<String, Object> evaluationData = response.toFastApiEvaluationData();
+            String fastApiResponse = sendEvaluationDataToFastApi(evaluationData);
+
+            log.info("평가 기준 학습 완료 - JobPosting ID: {}, Response: {}", savedJobPosting.getId(), fastApiResponse);
+
+        } catch (Exception e) {
+            log.error("FAST API 연동 실패 - JobPosting ID: {}", savedJobPosting.getId(), e);
+            throw new RuntimeException("평가 기준 학습에 실패했습니다: " + e.getMessage());
+        }
+
+        return response;
+    }
+
+    /**
+     * FAST API에 평가 기준 데이터 전송 (동기)
+     */
+    private String sendEvaluationDataToFastApi(Map<String, Object> evaluationData) {
+        try {
+            String url = fastApiBaseUrl + "/api/evaluation-criteria/train";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(evaluationData, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                return response.getBody();
+            } else {
+                throw new RuntimeException("FAST API 응답 오류: " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            log.error("FAST API 통신 실패", e);
+            throw new RuntimeException("FAST API 통신 실패: " + e.getMessage());
+        }
     }
 
     /**

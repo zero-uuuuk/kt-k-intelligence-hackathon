@@ -12,7 +12,9 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -83,5 +85,95 @@ public class JobPostingResponseDto {
                                 .map(CoverLetterQuestionResponseDto::from)
                                 .collect(Collectors.toList()) : new ArrayList<>())
                 .build();
+    }
+
+    /**
+     * FAST API로 보낼 평가 데이터를 Map 형태로 변환
+     */
+    public Map<String, Object> toFastApiEvaluationData() {
+        Map<String, Object> evaluationData = new HashMap<>();
+
+        evaluationData.put("job_posting_id", this.id);
+        evaluationData.put("title", this.title);
+        evaluationData.put("company_name", this.companyName);
+        evaluationData.put("job_role", this.jobRole);
+        evaluationData.put("total_score", this.totalScore);
+        evaluationData.put("passing_score", this.passingScore);
+        evaluationData.put("ai_automatic_evaluation", this.aiAutomaticEvaluation);
+        evaluationData.put("manual_review", this.manualReview);
+        evaluationData.put("timestamp", System.currentTimeMillis());
+
+        // 이력서 항목 데이터
+        if (this.resumeItems != null) {
+            evaluationData.put("resume_items", this.resumeItems.stream()
+                    .map(item -> {
+                        Map<String, Object> itemData = new HashMap<>();
+                        itemData.put("id", item.getId());
+                        itemData.put("name", item.getName());
+                        itemData.put("type", item.getType());
+                        itemData.put("score_weight", item.getScoreWeight());
+                        itemData.put("is_required", item.getIsRequired());
+
+                        // 평가 기준 데이터
+                        if (item.getCriteria() != null) {
+                            itemData.put("criteria", item.getCriteria().stream()
+                                    .map(criterion -> {
+                                        Map<String, Object> criterionData = new HashMap<>();
+                                        criterionData.put("grade", criterion.getGrade());
+                                        criterionData.put("description", criterion.getDescription());
+                                        criterionData.put("score_per_grade", criterion.getScorePerGrade());
+                                        return criterionData;
+                                    })
+                                    .collect(Collectors.toList()));
+                        }
+
+                        return itemData;
+                    })
+                    .collect(Collectors.toList()));
+        }
+
+        // 자기소개서 질문 데이터
+        if (this.coverLetterQuestions != null) {
+            evaluationData.put("cover_letter_questions", this.coverLetterQuestions.stream()
+                    .map(question -> {
+                        Map<String, Object> questionData = new HashMap<>();
+                        questionData.put("id", question.getId());
+                        questionData.put("content", question.getContent());
+                        questionData.put("is_required", question.getIsRequired());
+                        questionData.put("max_characters", question.getMaxCharacters());
+                        questionData.put("weight", question.getWeight());
+
+                        // 평가 기준 데이터
+                        if (question.getCriteria() != null) {
+                            questionData.put("criteria", question.getCriteria().stream()
+                                    .map(criterion -> {
+                                        Map<String, Object> criterionData = new HashMap<>();
+                                        criterionData.put("name", criterion.getName());
+                                        criterionData.put("overall_description", criterion.getOverallDescription());
+
+                                        // 상세 기준 데이터
+                                        if (criterion.getDetails() != null) {
+                                            criterionData.put("details", criterion.getDetails().stream()
+                                                    .map(detail -> {
+                                                        Map<String, Object> detailData = new HashMap<>();
+                                                        detailData.put("grade", detail.getGrade());
+                                                        detailData.put("description", detail.getDescription());
+                                                        detailData.put("score_per_grade", detail.getScorePerGrade());
+                                                        return detailData;
+                                                    })
+                                                    .collect(Collectors.toList()));
+                                        }
+
+                                        return criterionData;
+                                    })
+                                    .collect(Collectors.toList()));
+                        }
+
+                        return questionData;
+                    })
+                    .collect(Collectors.toList()));
+        }
+
+        return evaluationData;
     }
 }

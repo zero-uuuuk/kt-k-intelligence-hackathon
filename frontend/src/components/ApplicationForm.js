@@ -34,10 +34,12 @@ const ApplicationForm = ({ jobPostingId }) => {
         ...prev,
         resumeItemAnswers: data.resumeItems?.map(item => ({
           resumeItemId: item.id,
+          resumeItemName: item.name,
           resumeContent: ''
         })) || [],
         coverLetterQuestionAnswers: data.coverLetterQuestions?.map(question => ({
           coverLetterQuestionId: question.id,
+          questionContent: question.content,
           answerContent: ''
         })) || []
       }));

@@ -6,6 +6,7 @@ import MainDashboard from './components/MainDashboard';
 import JobPostingDashboard from './components/JobPostingDashboard';
 import JobPostingForm from './components/JobPostingForm';
 import ApplicationForm from './components/ApplicationForm';
+import ApplicationEvaluation from './components/ApplicationEvaluation';
 import { companyApi } from './services/api';
 import './App.css';
 
@@ -92,6 +93,8 @@ function App() {
             onSuccess={handleJobPostingSuccess}
           />
         );
+      case 'application-evaluation':
+        return <ApplicationEvaluation />;
       default:
         return <MainDashboard />;
     }
@@ -131,7 +134,10 @@ function App() {
             <span>채용 공고 관리</span>
           </div>
           
-          <div className="sidebar-item">
+          <div 
+            className={`sidebar-item ${currentView === 'application-evaluation' ? 'active' : ''}`}
+            onClick={() => setCurrentView('application-evaluation')}
+          >
             <FaUser className="sidebar-icon" />
             <span>지원서 평가</span>
           </div>

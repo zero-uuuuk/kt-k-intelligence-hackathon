@@ -24,6 +24,7 @@ public class ApplicationCreateRequestDto {
     @AllArgsConstructor
     public static class ResumeItemAnswerDto {
         private Long resumeItemId; // 이력서 항목 ID
+        private String resumeItemName; // 이력서 항목 이름 (추가)
         private String resumeContent; // 이력서 내용
     }
 
@@ -32,6 +33,7 @@ public class ApplicationCreateRequestDto {
     @AllArgsConstructor
     public static class CoverLetterQuestionAnswerDto {
         private Long coverLetterQuestionId; // 자기소개서 질문 ID
+        private String questionContent; // 질문 내용 (추가)
         private String answerContent; // 답변 내용
     }
 }

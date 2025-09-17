@@ -30,8 +30,8 @@ public class Application {
     @Column(name = "total_evaluation_score")
     private Integer totalEvaluationScore; // 평가 총점
 
-    @Column(name = "evaluation_comments", columnDefinition = "TEXT")
-    private String evaluationComments; // 평가 의견
+    @Column(name = "evaluation_comment", columnDefinition = "TEXT")
+    private String evaluationComment; // 평가 의견
 
     @Column(name = "ai_reliability_score")
     private Double aiReliabilityScore; // AI 신뢰도 점수

@@ -7,6 +7,7 @@ const JobPostingForm = ({ onBack, onSuccess, jobPostingId = null }) => {
   const [activeTab, setActiveTab] = useState('basic');
   const [expandedItems, setExpandedItems] = useState({});
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isTraining, setIsTraining] = useState(false); // 추가
 
   const [formData, setFormData] = useState({
     title: '',
@@ -303,15 +304,22 @@ const JobPostingForm = ({ onBack, onSuccess, jobPostingId = null }) => {
         coverLetterQuestions: formData.coverLetterQuestions || []
       };
 
-      let response;
+       let response;
       if (isEditMode) {
         response = await jobPostingApi.updateJobPosting(jobPostingId, submitData);
+        onSuccess(response);
       } else {
+        // 새 공고 생성 시에만 평가 기준 학습 화면 표시
+        setIsTraining(true);
+        setIsLoading(false);
+        
         response = await jobPostingApi.createJobPosting(submitData);
+        
+        // 학습 완료 후 성공 화면으로 이동
+        setIsTraining(false);
+        onSuccess(response);
       }
-      
-      onSuccess(response);
-    } catch (error) {
+     } catch (error) {
       console.error('에러 상세:', error);
       setError(error.response?.data?.message || `${isEditMode ? '수정' : '등록'}에 실패했습니다.`);
     } finally {
@@ -925,6 +933,27 @@ const JobPostingForm = ({ onBack, onSuccess, jobPostingId = null }) => {
     }
   };
 
+  // 평가 기준 학습 화면 렌더링
+  const renderTrainingScreen = () => (
+    <div className="training-screen">
+      <div className="training-content">
+        <div className="training-icon">
+          <div className="spinner"></div>
+        </div>
+        <h2 className="training-title">평가 기준 학습중입니다...</h2>
+        <p className="training-description">
+          AI가 입력하신 평가 기준을 학습하고 있습니다.<br/>
+          잠시만 기다려주세요.
+        </p>
+        <div className="training-progress">
+          <div className="progress-bar">
+            <div className="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="job-posting-form">
       <div className="form-header">
@@ -943,13 +972,17 @@ const JobPostingForm = ({ onBack, onSuccess, jobPostingId = null }) => {
         </div>
       </div>
 
+       {/* 평가 기준 학습 화면 */}
+      {isTraining && renderTrainingScreen()}
+
       {isLoading && !isEditMode && (
         <div className="loading">
           <h2>로딩 중...</h2>
         </div>
       )}
       
-      {!isLoading && (
+       {/* 폼 화면 */}
+      {!isLoading && !isTraining && (
         <div className="form-container">
           <div className="tab-navigation">
             {tabs.map(tab => {

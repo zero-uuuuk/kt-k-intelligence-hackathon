@@ -69,6 +69,37 @@ export const applicationApi = {
   submitApplication: async (jobPostingId, applicationData) => {
     const response = await api.post(`/applications/job-postings/${jobPostingId}`, applicationData);
     return response.data;
+  },
+
+  // 지원서 ID로 상세 정보 조회
+  getApplicationDetails: async (applicationId) => {
+    const response = await api.get(`/applications/${applicationId}/details`);
+    return response.data;
+  },
+
+  
+  // 지원서 평가 의견 및 상태 저장
+  saveEvaluation: async (applicationId, evaluationData) => {
+    const response = await api.put(`/applications/${applicationId}/evaluation`, evaluationData);
+    return response.data;
+  }
+  
+};
+
+
+
+// 평가 결과 관련 API
+export const evaluationApi = {
+  // 지원서 평가 결과 조회
+  getEvaluationResult: async (applicationId) => {
+    const response = await api.get(`/applications/${applicationId}/evaluation-result`);
+    return response.data;
+  },
+
+  // 공고별 평가 결과 목록 조회
+  getEvaluationResultsByJobPosting: async (jobPostingId) => {
+    const response = await api.get(`/applications/job-postings/${jobPostingId}/evaluation-results`);
+    return response.data;
   }
 };
 

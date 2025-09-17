@@ -1,19 +1,32 @@
 package com.jangyeonguk.backend.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jangyeonguk.backend.domain.application.*;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestion;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionAnswer;
+import com.jangyeonguk.backend.domain.evaluation.EvaluationResult;
 import com.jangyeonguk.backend.domain.jobposting.JobPosting;
 import com.jangyeonguk.backend.domain.resume.ResumeItem;
 import com.jangyeonguk.backend.domain.resume.ResumeItemAnswer;
 import com.jangyeonguk.backend.dto.application.ApplicationCreateRequestDto;
 import com.jangyeonguk.backend.dto.application.ApplicationResponseDto;
+import com.jangyeonguk.backend.dto.evaluation.EvaluationResultDto;
 import com.jangyeonguk.backend.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -22,6 +35,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
@@ -31,6 +45,13 @@ public class ApplicationService {
     private final CoverLetterQuestionRepository coverLetterQuestionRepository;
     private final ResumeItemAnswerRepository resumeItemAnswerRepository;
     private final CoverLetterQuestionAnswerRepository coverLetterQuestionAnswerRepository;
+    private final EvaluationResultRepository evaluationResultRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${fastapi.base-url:http://localhost:8000}")
+    private String fastApiBaseUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     /**
      * 지원서 제출
@@ -68,7 +89,6 @@ public class ApplicationService {
                 answer.setResumeContent(answerDto.getResumeContent());
                 answer.setApplication(savedApplication);
                 answer.setResumeItem(resumeItem);
-                // 답변 저장 추가
                 resumeItemAnswerRepository.save(answer);
             });
         }
@@ -83,16 +103,200 @@ public class ApplicationService {
                 answer.setAnswerContent(answerDto.getAnswerContent());
                 answer.setApplication(savedApplication);
                 answer.setCoverLetterQuestion(question);
-                // 다른 점수들은 나중에 평가 시 설정
 
-                // 답변 저장 추가
                 coverLetterQuestionAnswerRepository.save(answer);
             });
+        }
+
+        // FastAPI에 지원서 데이터 전송 (비동기)
+        try {
+            log.info("지원서 데이터를 FastAPI로 전송 시작 - Application ID: {}", savedApplication.getId());
+
+            Map<String, Object> applicationData = createApplicationDataForFastApi(savedApplication, request);
+            processApplicationAsync(savedApplication.getId(), applicationData);
+
+        } catch (Exception e) {
+            log.error("FastAPI 연동 실패 - Application ID: {}", savedApplication.getId(), e);
+            // FastAPI 연동 실패는 로그만 남기고 사용자에게는 성공으로 처리
         }
 
         return ApplicationResponseDto.from(savedApplication);
     }
 
+    /**
+     * FastAPI로 보낼 지원서 데이터 생성
+     */
+    private Map<String, Object> createApplicationDataForFastApi(Application application, ApplicationCreateRequestDto request) {
+        Map<String, Object> data = new HashMap<>();
+
+        // 지원자 정보
+        data.put("applicant_id", application.getApplicant().getId());
+        data.put("applicant_name", application.getApplicant().getName());
+        data.put("applicant_email", application.getApplicant().getEmail());
+
+        // 지원서 정보
+        data.put("application_id", application.getId());
+        data.put("job_posting_id", application.getJobPosting().getId());
+        data.put("job_posting_title", application.getJobPosting().getTitle());
+        data.put("company_name", application.getJobPosting().getCompany().getName());
+        data.put("submission_time", System.currentTimeMillis());
+
+        // 이력서 답변 정보
+        if (request.getResumeItemAnswers() != null) {
+            data.put("resume_answers", request.getResumeItemAnswers().stream()
+                    .map(answer -> {
+                        Map<String, Object> answerData = new HashMap<>();
+                        answerData.put("resume_item_id", answer.getResumeItemId());
+                        answerData.put("resume_item_name", answer.getResumeItemName());
+                        answerData.put("resume_content", answer.getResumeContent());
+                        return answerData;
+                    })
+                    .collect(Collectors.toList()));
+        }
+
+        // 자기소개서 답변 정보
+        if (request.getCoverLetterQuestionAnswers() != null) {
+            data.put("cover_letter_answers", request.getCoverLetterQuestionAnswers().stream()
+                    .map(answer -> {
+                        Map<String, Object> answerData = new HashMap<>();
+                        answerData.put("cover_letter_question_id", answer.getCoverLetterQuestionId());
+                        answerData.put("question_content", answer.getQuestionContent());
+                        answerData.put("answer_content", answer.getAnswerContent());
+                        return answerData;
+                    })
+                    .collect(Collectors.toList()));
+        }
+
+        return data;
+    }
+
+    /**
+     * 지원서 처리 (비동기)
+     */
+    @Async
+    public CompletableFuture<Void> processApplicationAsync(Long applicationId, Map<String, Object> applicationData) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                log.info("지원서 처리 시작 - Application ID: {}", applicationId);
+
+                // FastAPI에 데이터 전송
+                String fastApiResponse = sendApplicationDataToFastApi(applicationData);
+
+                log.info("지원서 처리 완료 - Application ID: {}, Response: {}", applicationId, fastApiResponse);
+
+                // 기업에게 알림 전송
+                sendNotificationToCompany(applicationId, applicationData);
+
+            } catch (Exception e) {
+                log.error("지원서 처리 실패 - Application ID: {}", applicationId, e);
+            }
+        });
+    }
+
+    /**
+     * FastAPI에 지원서 데이터 전송
+     */
+    private String sendApplicationDataToFastApi(Map<String, Object> applicationData) {
+        try {
+            String url = fastApiBaseUrl + "/api/applications/submit";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(applicationData, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                return response.getBody();
+            } else {
+                throw new RuntimeException("FastAPI 응답 오류: " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            log.error("FastAPI 통신 실패", e);
+            throw new RuntimeException("FastAPI 통신 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 평가 결과 처리
+     */
+    @Transactional
+    public void processEvaluationResult(EvaluationResultDto evaluationResult) {
+        try {
+            log.info("평가 결과 처리 시작 - 지원자: {}, 공고 ID: {}",
+                    evaluationResult.getApplicantName(), evaluationResult.getJobPostingId());
+
+            // 지원서 조회
+            Applicant applicant = applicantRepository.findAllByEmail(evaluationResult.getApplicantEmail()).stream().findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("지원자를 찾을 수 없습니다."));
+
+            Application application = applicationRepository.findByApplicant(applicant).getLast();
+
+            // 지원서 상태 업데이트
+            application.setStatus(ApplicationStatus.IN_PROGRESS);
+            applicationRepository.save(application);
+
+            // 평가 결과 저장
+            EvaluationResult evaluationResultEntity = EvaluationResult.builder()
+                    .application(application)
+                    .applicantName(evaluationResult.getApplicantName())
+                    .applicantEmail(evaluationResult.getApplicantEmail())
+                    .jobPostingId(evaluationResult.getJobPostingId())
+                    .totalScore(evaluationResult.getTotalScore())
+                    .resumeScores(objectMapper.writeValueAsString(evaluationResult.getResumeScores()))
+                    .coverLetterScores(objectMapper.writeValueAsString(evaluationResult.getCoverLetterScores()))
+                    .overallEvaluation(objectMapper.writeValueAsString(evaluationResult.getOverallEvaluation()))
+                    .evaluationCompletedAt(LocalDateTime.now())
+                    .build();
+
+            evaluationResultRepository.save(evaluationResultEntity);
+
+            log.info("평가 결과 처리 완료 - 지원자: {}, 총점: {}",
+                    evaluationResult.getApplicantName(), evaluationResult.getTotalScore());
+
+        } catch (Exception e) {
+            log.error("평가 결과 처리 실패 - 지원자: {}, 공고 ID: {}",
+                    evaluationResult.getApplicantName(), evaluationResult.getJobPostingId(), e);
+            throw new RuntimeException("평가 결과 처리에 실패했습니다: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 기업에게 알림 전송
+     */
+    private void sendNotificationToCompany(Long applicationId, Map<String, Object> applicationData) {
+        try {
+            log.info("기업 알림 전송 시작 - Application ID: {}", applicationId);
+
+            // 알림 데이터 구성
+            Map<String, Object> notificationData = new HashMap<>();
+            notificationData.put("application_id", applicationId);
+            notificationData.put("applicant_name", applicationData.get("applicant_name"));
+            notificationData.put("job_posting_title", applicationData.get("job_posting_title"));
+            notificationData.put("company_name", applicationData.get("company_name"));
+            notificationData.put("notification_type", "NEW_APPLICATION");
+            notificationData.put("timestamp", System.currentTimeMillis());
+
+            // 실제로는 이메일, SMS, 푸시 알림 등을 통해 전송
+            // 여기서는 로그로 시뮬레이션
+            log.info("=== 기업 알림 ===");
+            log.info("새로운 지원서가 도착했습니다!");
+            log.info("지원자: {}", notificationData.get("applicant_name"));
+            log.info("공고: {}", notificationData.get("job_posting_title"));
+            log.info("회사: {}", notificationData.get("company_name"));
+            log.info("지원서 ID: {}", applicationId);
+            log.info("==================");
+
+            // 실제 알림 전송 로직 (이메일, SMS 등)
+            // emailService.sendApplicationNotification(notificationData);
+            // smsService.sendApplicationNotification(notificationData);
+
+        } catch (Exception e) {
+            log.error("기업 알림 전송 실패 - Application ID: {}", applicationId, e);
+        }
+    }
 
     /**
      * 모든 지원서 조회
@@ -113,4 +317,89 @@ public class ApplicationService {
                 .map(ApplicationResponseDto::from)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 지원서 ID로 지원자 정보와 답변 조회
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getApplicationDetails(Long applicationId) {
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("지원서를 찾을 수 없습니다."));
+
+        // 지원자 정보
+        Applicant applicant = application.getApplicant();
+
+        // 이력서 답변 조회
+        List<ResumeItemAnswer> resumeAnswers = resumeItemAnswerRepository.findByApplicationId(applicationId);
+
+        // 자기소개서 답변 조회
+        List<CoverLetterQuestionAnswer> coverLetterAnswers = coverLetterQuestionAnswerRepository.findByApplicationId(applicationId);
+
+        // 평가 결과 조회 (이미 저장된 것)
+        Optional<EvaluationResult> evaluationResult = evaluationResultRepository.findByApplicationId(applicationId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("application", ApplicationResponseDto.from(application));
+        response.put("applicant", Map.of(
+                "id", applicant.getId(),
+                "name", applicant.getName(),
+                "email", applicant.getEmail()
+        ));
+        response.put("resumeAnswers", resumeAnswers.stream().map(answer -> Map.of(
+                "resumeItemId", answer.getResumeItem().getId(),
+                "resumeItemName", answer.getResumeItem().getName(),
+                "answer", answer.getResumeContent()
+        )).collect(Collectors.toList()));
+        response.put("coverLetterAnswers", coverLetterAnswers.stream().map(answer -> Map.of(
+                "questionId", answer.getCoverLetterQuestion().getId(),
+                "questionContent", answer.getCoverLetterQuestion().getContent(),
+                "answer", answer.getAnswerContent()
+        )).collect(Collectors.toList()));
+
+        // 평가 결과가 있으면 포함
+        if (evaluationResult.isPresent()) {
+            try {
+                EvaluationResult evalResult = evaluationResult.get();
+                Map<String, Object> evaluationData = new HashMap<>();
+                evaluationData.put("total_score", evalResult.getTotalScore());
+                evaluationData.put("resume_scores", objectMapper.readValue(evalResult.getResumeScores(), List.class));
+                evaluationData.put("cover_letter_scores", objectMapper.readValue(evalResult.getCoverLetterScores(), List.class));
+                evaluationData.put("overall_evaluation", objectMapper.readValue(evalResult.getOverallEvaluation(), Map.class));
+
+                response.put("evaluationResult", evaluationData);
+            } catch (Exception e) {
+                log.error("평가 결과 파싱 실패: {}", e.getMessage());
+                response.put("evaluationError", "평가 결과를 파싱할 수 없습니다.");
+            }
+        } else {
+            response.put("evaluationResult", null);
+        }
+
+        return response;
+    }
+
+    /**
+     * 지원서 평가 의견 및 상태 저장
+     */
+    @Transactional
+    public void saveEvaluation(Long applicationId, String comment, String status) {
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("지원서를 찾을 수 없습니다."));
+
+        // 평가 의견 저장
+        application.setEvaluationComment(comment);
+
+        // 평가 상태 저장
+        try {
+            ApplicationStatus applicationStatus = ApplicationStatus.valueOf(status);
+            application.setStatus(applicationStatus);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("유효하지 않은 평가 상태입니다: " + status);
+        }
+
+        applicationRepository.save(application);
+
+        log.info("지원서 평가 저장 완료 - Application ID: {}, Status: {}", applicationId, status);
+    }
+
 }
