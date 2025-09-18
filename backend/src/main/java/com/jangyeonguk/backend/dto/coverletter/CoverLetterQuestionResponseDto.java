@@ -22,7 +22,6 @@ public class CoverLetterQuestionResponseDto {
     private String content; // 질문 내용
     private Boolean isRequired; // 필수여부
     private Integer maxCharacters; // 최대글자수
-    private Integer weight; // 가중치
     private List<CoverLetterQuestionCriterionResponseDto> criteria; // 평가기준 목록
 
     /**
@@ -34,7 +33,6 @@ public class CoverLetterQuestionResponseDto {
                 .content(question.getContent())
                 .isRequired(question.getIsRequired())
                 .maxCharacters(question.getMaxCharacters())
-                .weight(question.getWeight())
                 .criteria(question.getCriteria().stream()
                         .map(CoverLetterQuestionCriterionResponseDto::from)
                         .collect(Collectors.toList()))

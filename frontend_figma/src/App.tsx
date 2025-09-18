@@ -9,7 +9,9 @@ import { ApplicationReview } from "./components/ApplicationReview";
 import { FinalEvaluation } from "./components/FinalEvaluation";
 import { ApplicationEvaluation } from "./components/ApplicationEvaluation";
 import { ApplicantStatistics } from "./components/ApplicantStatistics";
+import CompanyRegistration from "./components/CompanyRegistration";
 import { MapPin, FileText, Clock, Star } from "lucide-react";
+import { Toaster } from "sonner";
 import { getKoreanDate, calculateWorkspaceStatus } from "./utils/dateUtils";
 import {
   useJobPostings,
@@ -91,11 +93,19 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [completedWorkspaces, setCompletedWorkspaces] = useState<string[]>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
-  
   // API 호출
   const { data: jobPostings = [], isLoading: jobPostingsLoading } = useJobPostings();
-  const { data: company } = useCompany();
+  const { data: company, isLoading: companyLoading } = useCompany();
   const apiUtils = useApiUtils();
+
+  // 기업 등록 상태는 API에서 가져온 회사 데이터로 판단
+  const isCompanyRegistered = !!company;
+
+  // 기업 등록 완료 핸들러
+  const handleCompanyRegistrationComplete = () => {
+    // API 데이터가 업데이트되면 자동으로 isCompanyRegistered가 true가 됨
+    // 추가 작업이 필요하지 않음
+  };
 
   // 모집중인 워크스페이스 ID들 추출
   const recruitingWorkspaceIds = useMemo(() => {
@@ -152,7 +162,8 @@ export default function App() {
       period: `${formatDate(jobPosting.applicationStartDate)} - ${formatDate(jobPosting.applicationEndDate)}`,
       team: `${jobPosting.teamDepartment}, ${getPositionName(jobPosting.jobRole)}`,
       applicants: 0, // 실제 지원자 수는 별도 API로 조회
-      evaluationDeadline: jobPosting.evaluationEndDate
+      evaluationDeadline: jobPosting.evaluationEndDate,
+      publicLinkUrl: jobPosting.publicLinkUrl // publicLinkUrl 추가
     }));
   }, [jobPostings]);
 
@@ -258,35 +269,6 @@ export default function App() {
   };
 
 
-  // 새 공고 저장 핸들러
-  const handleSaveJobPosting = (jobPostingData: any) => {
-    // 새로운 워크스페이스 생성 (status는 동적으로 계산되므로 제외)
-    const newWorkspace: Omit<WorkspaceCard, 'status'> = {
-      id: jobPostingData.id,
-      title: jobPostingData.basicInfo.title,
-      period: `${formatDate(jobPostingData.basicInfo.startDate)} - ${formatDate(jobPostingData.basicInfo.endDate)}`,
-      team: `${jobPostingData.basicInfo.team}, ${getPositionName(jobPostingData.basicInfo.position)}`,
-      applicants: 0,
-      evaluationDeadline: jobPostingData.basicInfo.evaluationDeadline // 서류 평가 마감일 추가
-    };
-
-    // 기본 워크스페이스 데이터에 추가
-    // setBaseWorkspaceData(prev => [...prev, newWorkspace]); // API 호출로 변경
-    
-    // 평가 기준 저장
-    if (jobPostingData.resumeEvaluationCriteria && jobPostingData.essayEvaluationCriteria) {
-      setWorkspaceEvaluationCriteria(prev => ({
-        ...prev,
-        [jobPostingData.id]: {
-          resumeEvaluationCriteria: jobPostingData.resumeEvaluationCriteria,
-          essayEvaluationCriteria: jobPostingData.essayEvaluationCriteria
-        }
-      }));
-    }
-    
-    console.log('새 공고 저장:', jobPostingData);
-    console.log('새 워크스페이스 추가:', newWorkspace);
-  };
 
   // 공고 수정 핸들러
   const handleUpdateJobPosting = (workspaceId: string, jobPostingData: any) => {
@@ -391,7 +373,6 @@ export default function App() {
             <WorkspaceManagement 
               completedWorkspaces={completedWorkspaces}
               workspaceData={workspaceData}
-              onSaveJobPosting={handleSaveJobPosting}
               onUpdateJobPosting={handleUpdateJobPosting}
             />
           </div>
@@ -512,7 +493,17 @@ export default function App() {
   // 로딩 상태 처리
   const isApplicationsLoading = applicationsQueries.some(query => query.isLoading);
   
-  if (jobPostingsLoading || isApplicationsLoading) {
+  // 기업 등록이 완료되지 않은 경우 기업 등록 화면 표시
+  if (!companyLoading && !isCompanyRegistered) {
+    return (
+      <>
+        <CompanyRegistration onComplete={handleCompanyRegistrationComplete} />
+        <Toaster position="top-right" richColors />
+      </>
+    );
+  }
+
+  if (jobPostingsLoading || isApplicationsLoading || companyLoading) {
     return (
       <div className="h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -524,16 +515,19 @@ export default function App() {
   }
 
   return (
-    <div className={`h-screen bg-gray-50 ${(currentView === 'application-review' || currentView === 'final-evaluation') ? '' : 'grid grid-cols-[280px_1fr]'}`}>
-      {/* Sidebar - only show when in main view */}
-      {currentView === 'main' && (
-        <Sidebar activeMenu={activeMenu} onMenuChange={setActiveMenu} />
-      )}
-      
-      {/* Main Content */}
-      <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-        {renderMainContent()}
+    <>
+      <div className={`h-screen bg-gray-50 ${(currentView === 'application-review' || currentView === 'final-evaluation') ? '' : 'grid grid-cols-[280px_1fr]'}`}>
+        {/* Sidebar - only show when in main view */}
+        {currentView === 'main' && (
+          <Sidebar activeMenu={activeMenu} onMenuChange={setActiveMenu} />
+        )}
+        
+        {/* Main Content */}
+        <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+          {renderMainContent()}
+        </div>
       </div>
-    </div>
+      <Toaster position="top-right" richColors />
+    </>
   );
 }

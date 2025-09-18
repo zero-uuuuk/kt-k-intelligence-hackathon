@@ -63,14 +63,16 @@ public class JobPostingService {
                 .teamDepartment(request.getTeamDepartment())
                 .jobRole(request.getJobRole())
                 .employmentType(request.getEmploymentType())
-                .applicationStartDate(request.getApplicationStartDate())
-                .applicationEndDate(request.getApplicationEndDate())
-                .evaluationEndDate(request.getEvaluationEndDate())
+                .applicationStartDate(request.getApplicationStartDate() != null ? request.getApplicationStartDate().atStartOfDay() : null)
+                .applicationEndDate(request.getApplicationEndDate() != null ? request.getApplicationEndDate().atStartOfDay() : null)
+                .evaluationEndDate(request.getEvaluationEndDate() != null ? request.getEvaluationEndDate().atStartOfDay() : null)
                 .description(request.getDescription())
                 .experienceRequirements(request.getExperienceRequirements())
                 .educationRequirements(request.getEducationRequirements())
                 .requiredSkills(request.getRequiredSkills())
                 .totalScore(request.getTotalScore())
+                .resumeScoreWeight(request.getResumeScoreWeight())
+                .coverLetterScoreWeight(request.getCoverLetterScoreWeight())
                 .passingScore(request.getPassingScore())
                 .aiAutomaticEvaluation(request.getAiAutomaticEvaluation())
                 .manualReview(request.getManualReview())
@@ -80,6 +82,10 @@ public class JobPostingService {
 
         JobPosting savedJobPosting = jobPostingRepository.save(jobPosting);
 
+        // 날짜에 따라 초기 상태 설정
+        PostingStatus initialStatus = determinePostingStatus(savedJobPosting, LocalDateTime.now());
+        savedJobPosting.setPostingStatus(initialStatus);
+        
         // 공개 링크 URL 생성 (저장된 ID 사용)
         String publicLinkUrl = generatePublicLinkUrl(savedJobPosting.getId());
         savedJobPosting.setPublicLinkUrl(publicLinkUrl);
@@ -91,8 +97,8 @@ public class JobPostingService {
                 ResumeItem resumeItem = ResumeItem.builder()
                         .name(resumeItemDto.getName())
                         .type(resumeItemDto.getType())
-                        .scoreWeight(resumeItemDto.getScoreWeight())
                         .isRequired(resumeItemDto.getIsRequired())
+                        .maxScore(resumeItemDto.getMaxScore())
                         .jobPosting(savedJobPosting)
                         .build();
 
@@ -121,7 +127,6 @@ public class JobPostingService {
                         .content(questionDto.getContent())
                         .isRequired(questionDto.getIsRequired())
                         .maxCharacters(questionDto.getMaxCharacters())
-                        .weight(questionDto.getWeight())
                         .jobPosting(savedJobPosting)
                         .build();
 
@@ -239,18 +244,23 @@ public class JobPostingService {
         existingJobPosting.setTeamDepartment(request.getTeamDepartment());
         existingJobPosting.setJobRole(request.getJobRole());
         existingJobPosting.setEmploymentType(request.getEmploymentType());
-        existingJobPosting.setApplicationStartDate(request.getApplicationStartDate());
-        existingJobPosting.setApplicationEndDate(request.getApplicationEndDate());
-        existingJobPosting.setEvaluationEndDate(request.getEvaluationEndDate());
+        existingJobPosting.setApplicationStartDate(request.getApplicationStartDate() != null ? request.getApplicationStartDate().atStartOfDay() : null);
+        existingJobPosting.setApplicationEndDate(request.getApplicationEndDate() != null ? request.getApplicationEndDate().atStartOfDay() : null);
+        existingJobPosting.setEvaluationEndDate(request.getEvaluationEndDate() != null ? request.getEvaluationEndDate().atStartOfDay() : null);
         existingJobPosting.setDescription(request.getDescription());
         existingJobPosting.setExperienceRequirements(request.getExperienceRequirements());
         existingJobPosting.setEducationRequirements(request.getEducationRequirements());
         existingJobPosting.setRequiredSkills(request.getRequiredSkills());
         existingJobPosting.setTotalScore(request.getTotalScore());
+        existingJobPosting.setResumeScoreWeight(request.getResumeScoreWeight());
+        existingJobPosting.setCoverLetterScoreWeight(request.getCoverLetterScoreWeight());
         existingJobPosting.setPassingScore(request.getPassingScore());
         existingJobPosting.setAiAutomaticEvaluation(request.getAiAutomaticEvaluation());
         existingJobPosting.setManualReview(request.getManualReview());
-        existingJobPosting.setPostingStatus(request.getPostingStatus());
+        
+        // 날짜에 따라 상태 자동 설정 (수동 설정 무시)
+        PostingStatus updatedStatus = determinePostingStatus(existingJobPosting, LocalDateTime.now());
+        existingJobPosting.setPostingStatus(updatedStatus);
 
         // 기존 ResumeItems 삭제
         resumeItemRepository.deleteByJobPostingId(id);
@@ -261,8 +271,8 @@ public class JobPostingService {
                 ResumeItem resumeItem = ResumeItem.builder()
                         .name(resumeItemDto.getName())
                         .type(resumeItemDto.getType())
-                        .scoreWeight(resumeItemDto.getScoreWeight())
                         .isRequired(resumeItemDto.getIsRequired())
+                        .maxScore(resumeItemDto.getMaxScore())
                         .jobPosting(existingJobPosting)
                         .build();
 
@@ -294,7 +304,6 @@ public class JobPostingService {
                         .content(questionDto.getContent())
                         .isRequired(questionDto.getIsRequired())
                         .maxCharacters(questionDto.getMaxCharacters())
-                        .weight(questionDto.getWeight())
                         .jobPosting(existingJobPosting)
                         .build();
 

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Plus, MapPin, Users, Calendar, Copy, FileText, Clock } from "lucide-react";
 import { Button } from "./ui/button";
 import { JobPostingForm } from "./JobPostingForm";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface WorkspaceCard {
   id: string;
@@ -12,6 +12,7 @@ interface WorkspaceCard {
   applicants?: number;
   status: "recruiting" | "scheduled" | "completed";
   evaluationDeadline?: string; // 평가 마감일 추가
+  publicLinkUrl?: string; // 공개 링크 URL 추가
 }
 
 interface WorkspaceCardProps {
@@ -20,6 +21,41 @@ interface WorkspaceCardProps {
 }
 
 function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
+  const handleCopyLink = async () => {
+    if (workspace.publicLinkUrl) {
+      try {
+        // 최신 브라우저의 Clipboard API 사용
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(workspace.publicLinkUrl);
+          toast.success('링크가 클립보드에 복사되었습니다!');
+        } else {
+          // 구형 브라우저나 HTTP 환경에서의 대체 방법
+          const textArea = document.createElement('textarea');
+          textArea.value = workspace.publicLinkUrl;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          try {
+            document.execCommand('copy');
+            toast.success('링크가 클립보드에 복사되었습니다!');
+          } catch (err) {
+            toast.error('링크 복사에 실패했습니다.');
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        }
+      } catch (error) {
+        toast.error('링크 복사에 실패했습니다.');
+      }
+    } else {
+      toast.error('복사할 링크가 없습니다.');
+    }
+  };
+
   const getStatusColor = (status: WorkspaceCard['status']) => {
     switch (status) {
       case 'recruiting':
@@ -134,16 +170,8 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
           variant="outline" 
           size="sm" 
           className="text-xs h-8 px-3 flex items-center gap-1"
-          disabled={workspace.status === 'completed' || workspace.status === 'scheduled'}
-          onClick={() => {
-            // 링크 복사 기능
-            const link = `https://recruit.company.com/job/${workspace.id}`;
-            navigator.clipboard.writeText(link).then(() => {
-              toast.success("링크가 클립보드에 복사되었습니다!");
-            }).catch(() => {
-              toast.error("링크 복사에 실패했습니다.");
-            });
-          }}
+          disabled={!workspace.publicLinkUrl}
+          onClick={handleCopyLink}
         >
           <Copy className="w-3 h-3" />
           <span className="hidden sm:inline">링크복사</span>
@@ -156,14 +184,12 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
 interface WorkspaceManagementProps {
   completedWorkspaces?: string[];
   workspaceData?: WorkspaceCard[];
-  onSaveJobPosting?: (data: any) => void;
   onUpdateJobPosting?: (id: string, data: any) => void;
 }
 
 export function WorkspaceManagement({ 
   completedWorkspaces: externalCompletedWorkspaces = [],
   workspaceData = [],
-  onSaveJobPosting,
   onUpdateJobPosting
 }: WorkspaceManagementProps) {
   const [showPastJobPostings, setShowPastJobPostings] = useState(false);
@@ -201,23 +227,6 @@ export function WorkspaceManagement({
     setShowJobPostingForm(true);
   };
 
-  const handleSaveJobPosting = (data: any) => {
-    if (editingWorkspace) {
-      // 수정 모드
-      if (onUpdateJobPosting) {
-        onUpdateJobPosting(editingWorkspace.id, data);
-      }
-      toast.success("공고가 성공적으로 수정되었습니다!");
-    } else {
-      // 새 공고 모드
-      if (onSaveJobPosting) {
-        onSaveJobPosting(data);
-      }
-      toast.success("새 공고가 성공적으로 등록되었습니다!");
-    }
-    setShowJobPostingForm(false);
-    setEditingWorkspace(null);
-  };
 
   const handleFormCancel = () => {
     setShowJobPostingForm(false);
@@ -228,7 +237,6 @@ export function WorkspaceManagement({
     return (
       <JobPostingForm 
         onBack={handleFormCancel}
-        onSave={handleSaveJobPosting}
         editingWorkspace={editingWorkspace}
         isEditMode={!!editingWorkspace}
       />

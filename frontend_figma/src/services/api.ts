@@ -78,8 +78,8 @@ export interface ResumeItemResponseDto {
   id: number;
   name: string;
   type: ResumeItemType;
-  scoreWeight: number;
   isRequired: boolean;
+  maxScore: number; // 최대점수
   criteria: ResumeItemCriterionResponseDto[];
 }
 
@@ -101,7 +101,6 @@ export interface CoverLetterQuestionResponseDto {
   content: string;
   isRequired: boolean;
   maxCharacters: number;
-  weight: number;
   criteria: CoverLetterQuestionCriterionResponseDto[];
 }
 
@@ -145,6 +144,8 @@ export interface JobPostingCreateRequestDto {
   educationRequirements: string;
   requiredSkills: string;
   totalScore: number;
+  resumeScoreWeight: number;
+  coverLetterScoreWeight: number;
   passingScore: number;
   aiAutomaticEvaluation: boolean;
   manualReview: boolean;
@@ -157,8 +158,8 @@ export interface JobPostingCreateRequestDto {
 export interface ResumeItemCreateRequestDto {
   name: string;
   type: ResumeItemType;
-  scoreWeight: number;
   isRequired: boolean;
+  maxScore: number; // 최대점수
   criteria: ResumeItemCriterionCreateRequestDto[];
 }
 
@@ -174,7 +175,6 @@ export interface CoverLetterQuestionCreateRequestDto {
   content: string;
   isRequired: boolean;
   maxCharacters: number;
-  weight: number;
   criteria: CoverLetterQuestionCriterionCreateRequestDto[];
 }
 
@@ -205,19 +205,17 @@ export interface ApplicationResponseDto {
 export interface ApplicationCreateRequestDto {
   applicantName: string;
   applicantEmail: string;
-  resumeItemAnswers: ResumeItemAnswerDto[];
-  coverLetterQuestionAnswers: CoverLetterQuestionAnswerDto[];
+  resumeItemAnswers: ResumeItemAnswerCreateDto[];
+  coverLetterQuestionAnswers: CoverLetterQuestionAnswerCreateDto[];
 }
 
-// 이력서 항목 답변 DTO
-export interface ResumeItemAnswerDto {
+export interface ResumeItemAnswerCreateDto {
   resumeItemId: number;
   resumeItemName: string;
   resumeContent: string;
 }
 
-// 자기소개서 질문 답변 DTO
-export interface CoverLetterQuestionAnswerDto {
+export interface CoverLetterQuestionAnswerCreateDto {
   coverLetterQuestionId: number;
   questionContent: string;
   answerContent: string;

@@ -17,6 +17,5 @@ public class CoverLetterQuestionCreateRequestDto {
     private String content; // 질문 내용
     private Boolean isRequired; // 필수여부
     private Integer maxCharacters; // 최대글자수
-    private Integer weight; // 가중치
     private List<CoverLetterQuestionCriterionCreateRequestDto> criteria; // 평가기준 목록
 }

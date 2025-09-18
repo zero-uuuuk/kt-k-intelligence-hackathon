@@ -12,6 +12,7 @@ import {
   CompanyCreateRequestDto,
   apiUtils
 } from '../services/api';
+import { toast } from 'sonner';
 
 // 회사 정보 조회
 export const useCompany = () => {
@@ -162,6 +163,20 @@ export const useMultipleApplications = (workspaceIds: number[]) => {
 
   return useQueries({
     queries,
+  });
+};
+
+// Application 제출 훅
+export const useApplicationSubmission = () => {
+  return useMutation({
+    mutationFn: ({ jobPostingId, applicationData }: { 
+      jobPostingId: number; 
+      applicationData: ApplicationCreateRequestDto 
+    }) => applicationApi.submitApplication(jobPostingId, applicationData),
+    onError: (error: any) => {
+      console.error('지원서 제출 실패:', error);
+      toast.error('지원서 제출에 실패했습니다. 다시 시도해주세요.');
+    }
   });
 };
 

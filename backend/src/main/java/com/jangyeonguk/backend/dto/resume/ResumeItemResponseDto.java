@@ -22,8 +22,8 @@ public class ResumeItemResponseDto {
     private Long id;
     private String name; // 항목명
     private ResumeItemType type; // 타입 (숫자, 날짜, 파일, 텍스트)
-    private Integer scoreWeight; // 배점
     private Boolean isRequired; // 필수여부
+    private Integer maxScore; // 최대점수
     private List<ResumeItemCriterionResponseDto> criteria; // 평가기준 목록
 
     /**
@@ -34,8 +34,8 @@ public class ResumeItemResponseDto {
                 .id(resumeItem.getId())
                 .name(resumeItem.getName())
                 .type(resumeItem.getType())
-                .scoreWeight(resumeItem.getScoreWeight())
                 .isRequired(resumeItem.getIsRequired())
+                .maxScore(resumeItem.getMaxScore())
                 .criteria(resumeItem.getCriteria().stream()
                         .map(ResumeItemCriterionResponseDto::from)
                         .collect(Collectors.toList()))

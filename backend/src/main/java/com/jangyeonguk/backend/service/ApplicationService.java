@@ -1,6 +1,5 @@
 package com.jangyeonguk.backend.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jangyeonguk.backend.domain.application.*;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestion;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionAnswer;
@@ -12,12 +11,16 @@ import com.jangyeonguk.backend.dto.application.ApplicationCreateRequestDto;
 import com.jangyeonguk.backend.dto.application.ApplicationResponseDto;
 import com.jangyeonguk.backend.dto.evaluation.EvaluationResultDto;
 import com.jangyeonguk.backend.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import jakarta.annotation.PostConstruct;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
@@ -46,12 +49,32 @@ public class ApplicationService {
     private final ResumeItemAnswerRepository resumeItemAnswerRepository;
     private final CoverLetterQuestionAnswerRepository coverLetterQuestionAnswerRepository;
     private final EvaluationResultRepository evaluationResultRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${fastapi.base-url:http://localhost:8000}")
     private String fastApiBaseUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    
+    @PostConstruct
+    public void initRestTemplate() {
+        this.restTemplate = new RestTemplate();
+        
+        // 기존 MessageConverter 제거
+        this.restTemplate.getMessageConverters().clear();
+        
+        // camelCase 설정된 ObjectMapper로 새로운 MessageConverter 생성
+        ObjectMapper camelCaseMapper = new ObjectMapper();
+        camelCaseMapper.setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE);
+        
+        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
+        converter.setObjectMapper(camelCaseMapper);
+        
+        // 기본 MessageConverter들 추가
+        this.restTemplate.getMessageConverters().add(new org.springframework.http.converter.StringHttpMessageConverter());
+        this.restTemplate.getMessageConverters().add(converter);
+        this.restTemplate.getMessageConverters().add(new org.springframework.http.converter.FormHttpMessageConverter());
+    }
 
     /**
      * 지원서 제출
@@ -130,25 +153,32 @@ public class ApplicationService {
         Map<String, Object> data = new HashMap<>();
 
         // 지원자 정보
-        data.put("applicant_id", application.getApplicant().getId());
-        data.put("applicant_name", application.getApplicant().getName());
-        data.put("applicant_email", application.getApplicant().getEmail());
+        data.put("applicantId", application.getApplicant().getId());
+        data.put("applicantName", application.getApplicant().getName());
+        data.put("applicantEmail", application.getApplicant().getEmail());
 
         // 지원서 정보
-        data.put("application_id", application.getId());
-        data.put("job_posting_id", application.getJobPosting().getId());
-        data.put("job_posting_title", application.getJobPosting().getTitle());
-        data.put("company_name", application.getJobPosting().getCompany().getName());
-        data.put("submission_time", System.currentTimeMillis());
+        data.put("applicationId", application.getId());
+        data.put("jobPostingId", application.getJobPosting().getId());
+        data.put("jobPostingTitle", application.getJobPosting().getTitle());
+        data.put("companyName", application.getJobPosting().getCompany().getName());
+        data.put("submissionTime", System.currentTimeMillis());
 
         // 이력서 답변 정보
         if (request.getResumeItemAnswers() != null) {
-            data.put("resume_answers", request.getResumeItemAnswers().stream()
+            data.put("resumeItemAnswers", request.getResumeItemAnswers().stream()
                     .map(answer -> {
                         Map<String, Object> answerData = new HashMap<>();
-                        answerData.put("resume_item_id", answer.getResumeItemId());
-                        answerData.put("resume_item_name", answer.getResumeItemName());
-                        answerData.put("resume_content", answer.getResumeContent());
+                        answerData.put("resumeItemId", answer.getResumeItemId());
+                        answerData.put("resumeItemName", answer.getResumeItemName());
+                        answerData.put("resumeContent", answer.getResumeContent());
+                        
+                        // ResumeItem에서 maxScore 조회
+                        ResumeItem resumeItem = resumeItemRepository.findById(answer.getResumeItemId()).orElse(null);
+                        if (resumeItem != null) {
+                            answerData.put("maxScore", resumeItem.getMaxScore());
+                        }
+                        
                         return answerData;
                     })
                     .collect(Collectors.toList()));
@@ -156,12 +186,12 @@ public class ApplicationService {
 
         // 자기소개서 답변 정보
         if (request.getCoverLetterQuestionAnswers() != null) {
-            data.put("cover_letter_answers", request.getCoverLetterQuestionAnswers().stream()
+            data.put("coverLetterQuestionAnswers", request.getCoverLetterQuestionAnswers().stream()
                     .map(answer -> {
                         Map<String, Object> answerData = new HashMap<>();
-                        answerData.put("cover_letter_question_id", answer.getCoverLetterQuestionId());
-                        answerData.put("question_content", answer.getQuestionContent());
-                        answerData.put("answer_content", answer.getAnswerContent());
+                        answerData.put("coverLetterQuestionId", answer.getCoverLetterQuestionId());
+                        answerData.put("questionContent", answer.getQuestionContent());
+                        answerData.put("answerContent", answer.getAnswerContent());
                         return answerData;
                     })
                     .collect(Collectors.toList()));
@@ -184,8 +214,8 @@ public class ApplicationService {
 
                 log.info("지원서 처리 완료 - Application ID: {}, Response: {}", applicationId, fastApiResponse);
 
-                // 기업에게 알림 전송
-                sendNotificationToCompany(applicationId, applicationData);
+                // 기업에게 알림 전송 (현재 비활성화)
+                // sendNotificationToCompany(applicationId, applicationData);
 
             } catch (Exception e) {
                 log.error("지원서 처리 실패 - Application ID: {}", applicationId, e);
@@ -202,6 +232,9 @@ public class ApplicationService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // 전송할 데이터 로깅
+            log.info("FastAPI로 전송할 데이터: {}", objectMapper.writeValueAsString(applicationData));
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(applicationData, headers);
 
@@ -232,7 +265,8 @@ public class ApplicationService {
             Applicant applicant = applicantRepository.findAllByEmail(evaluationResult.getApplicantEmail()).stream().findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("지원자를 찾을 수 없습니다."));
 
-            Application application = applicationRepository.findByApplicant(applicant).getLast();
+            List<Application> applications = applicationRepository.findByApplicant(applicant);
+            Application application = applications.get(applications.size() - 1);
 
             // 지원서 상태 업데이트
             application.setStatus(ApplicationStatus.IN_PROGRESS);
@@ -244,17 +278,17 @@ public class ApplicationService {
                     .applicantName(evaluationResult.getApplicantName())
                     .applicantEmail(evaluationResult.getApplicantEmail())
                     .jobPostingId(evaluationResult.getJobPostingId())
-                    .totalScore(evaluationResult.getTotalScore())
-                    .resumeScores(objectMapper.writeValueAsString(evaluationResult.getResumeScores()))
-                    .coverLetterScores(objectMapper.writeValueAsString(evaluationResult.getCoverLetterScores()))
-                    .overallEvaluation(objectMapper.writeValueAsString(evaluationResult.getOverallEvaluation()))
+                    .totalScore(calculateTotalScore(evaluationResult))
+                    .resumeScores(objectMapper.writeValueAsString(evaluationResult.getResumeEvaluations()))
+                    .coverLetterScores(objectMapper.writeValueAsString(evaluationResult.getCoverLetterQuestionEvaluations()))
+                    .overallEvaluation(objectMapper.writeValueAsString(evaluationResult.getOverallAnalysis()))
                     .evaluationCompletedAt(LocalDateTime.now())
                     .build();
 
             evaluationResultRepository.save(evaluationResultEntity);
 
             log.info("평가 결과 처리 완료 - 지원자: {}, 총점: {}",
-                    evaluationResult.getApplicantName(), evaluationResult.getTotalScore());
+                    evaluationResult.getApplicantName(), calculateTotalScore(evaluationResult));
 
         } catch (Exception e) {
             log.error("평가 결과 처리 실패 - 지원자: {}, 공고 ID: {}",
@@ -264,39 +298,21 @@ public class ApplicationService {
     }
 
     /**
-     * 기업에게 알림 전송
+     * 총점 계산 (이력서 항목별 최대점수의 합계)
      */
-    private void sendNotificationToCompany(Long applicationId, Map<String, Object> applicationData) {
-        try {
-            log.info("기업 알림 전송 시작 - Application ID: {}", applicationId);
-
-            // 알림 데이터 구성
-            Map<String, Object> notificationData = new HashMap<>();
-            notificationData.put("application_id", applicationId);
-            notificationData.put("applicant_name", applicationData.get("applicant_name"));
-            notificationData.put("job_posting_title", applicationData.get("job_posting_title"));
-            notificationData.put("company_name", applicationData.get("company_name"));
-            notificationData.put("notification_type", "NEW_APPLICATION");
-            notificationData.put("timestamp", System.currentTimeMillis());
-
-            // 실제로는 이메일, SMS, 푸시 알림 등을 통해 전송
-            // 여기서는 로그로 시뮬레이션
-            log.info("=== 기업 알림 ===");
-            log.info("새로운 지원서가 도착했습니다!");
-            log.info("지원자: {}", notificationData.get("applicant_name"));
-            log.info("공고: {}", notificationData.get("job_posting_title"));
-            log.info("회사: {}", notificationData.get("company_name"));
-            log.info("지원서 ID: {}", applicationId);
-            log.info("==================");
-
-            // 실제 알림 전송 로직 (이메일, SMS 등)
-            // emailService.sendApplicationNotification(notificationData);
-            // smsService.sendApplicationNotification(notificationData);
-
-        } catch (Exception e) {
-            log.error("기업 알림 전송 실패 - Application ID: {}", applicationId, e);
+    private Integer calculateTotalScore(EvaluationResultDto evaluationResult) {
+        int totalMaxScore = 0;
+        
+        // 이력서 항목별 최대점수 합계
+        if (evaluationResult.getResumeEvaluations() != null) {
+            totalMaxScore += evaluationResult.getResumeEvaluations().stream()
+                    .mapToInt(EvaluationResultDto.ResumeEvaluationDto::getMaxScore)
+                    .sum();
         }
+        
+        return totalMaxScore;
     }
+
 
     /**
      * 모든 지원서 조회

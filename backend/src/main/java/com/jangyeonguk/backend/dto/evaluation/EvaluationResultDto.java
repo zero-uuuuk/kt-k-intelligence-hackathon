@@ -1,110 +1,80 @@
 package com.jangyeonguk.backend.dto.evaluation;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jangyeonguk.backend.domain.resume.Grade;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 /**
- * 평가 결과 DTO
+ * LLM 평가 결과 DTO
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class EvaluationResultDto {
 
-    @JsonProperty("applicant_name")
+    // 1. 지원자 정보
+    private Long applicantId;
     private String applicantName;
-
-    @JsonProperty("applicant_email")
     private String applicantEmail;
 
-    @JsonProperty("job_posting_id")
+    // 2. 지원서 정보
+    private Long applicationId;
     private Long jobPostingId;
+    private String jobPostingTitle;
+    private String companyName;
 
-    @JsonProperty("total_score")
-    private Integer totalScore;
+    // 3. 이력서 평가 결과
+    private List<ResumeEvaluationDto> resumeEvaluations;
 
-    @JsonProperty("resume_scores")
-    private List<ResumeScoreDto> resumeScores;
+    // 4. 자기소개서 평가 결과
+    private List<CoverLetterQuestionEvaluationDto> coverLetterQuestionEvaluations;
 
-    @JsonProperty("cover_letter_scores")
-    private List<CoverLetterScoreDto> coverLetterScores;
-
-    @JsonProperty("overall_evaluation")
-    private OverallEvaluationDto overallEvaluation;
+    // 5. 종합 분석
+    private OverallAnalysisDto overallAnalysis;
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class ResumeScoreDto {
-        private Long id;
-        private String name;
-        private Integer score;
-
-        @JsonProperty("word_count_score")
-        private Integer wordCountScore;
-
-        @JsonProperty("applicant_answer") // 지원자 답변 추가
-        private String applicantAnswer;
+    public static class ResumeEvaluationDto {
+        private Long resumeItemId;
+        private String resumeItemName;
+        private String resumeContent;
+        private Integer score; // 지원자 점수
+        private Integer maxScore; // 최대 점수
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class CoverLetterScoreDto {
-        @JsonProperty("question_id")
-        private Long questionId;
-
-        @JsonProperty("question_content")
-        private String questionContent;
-
-        @JsonProperty("applicant_answer") // 지원자 답변 추가
-        private String applicantAnswer;
-
-        private List<String> tags;
-
-        @JsonProperty("checked_contents")
-        private List<CheckedContentDto> checkedContents;
+    public static class CoverLetterQuestionEvaluationDto {
+        private Long coverLetterQuestionId;
+        private List<String> keywords; // 문항 별 키워드
+        private String summary; // 문항 별 요약
+        private List<CoverLetterAnswerEvaluationDto> answerEvaluations; // 문항 답변별 평가 (여러번 평가 가능)
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class CheckedContentDto {
-        private String content;
-        private String evaluation;
-        private String reason;
-
-        @JsonProperty("criterion_name")
-        private String criterionName;
+    public static class CoverLetterAnswerEvaluationDto {
+        private Long evaluationCriteriaId; // 평가 기준 ID
+        private String evaluationCriteriaName; // 평가 기준 이름
+        private Grade grade; // 평가 기준 세부 이름 (Grade enum)
+        private String evaluatedContent; // 평가가 된 자기소개서 내 내용
+        private String evaluationReason; // 그렇게 평가한 이유
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class OverallEvaluationDto {
-        @JsonProperty("comprehensive_evaluation")
-        private String comprehensiveEvaluation;
-
-        private List<String> strengths;
-
-        @JsonProperty("improvement_points")
-        private List<String> improvementPoints;
-
-        @JsonProperty("key_insights")
-        private List<String> keyInsights;
-
-        @JsonProperty("pass_decision")
-        private String passDecision;
-
-        @JsonProperty("confidence_level")
-        private Double confidenceLevel;
+    public static class OverallAnalysisDto {
+        private String overallEvaluation; // 종합평가 (1줄)
+        private List<String> strengths; // 강점 (5개정도)
+        private List<String> improvements; // 개선점 (5개정도)
+        private String aiRecommendation; // AI 추천결과 (합격 권장, 탈락 권장)
+        private Double aiReliability; // AI 신뢰도
     }
 }

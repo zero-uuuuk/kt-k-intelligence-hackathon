@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowLeft, Plus, Trash2, Calendar, MapPin, Users, Building, Target, Clock, Settings, GraduationCap, ShieldCheck, Heart, AlignLeft, Award, Upload, FileText, Download } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { employmentTypeOptions } from '../utils/employmentTypeUtils';
 
 interface ResumeField {
   id: string;
@@ -86,10 +87,12 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
 
     // 고용 형태 추정 (제목에서 추출)
     const getEmploymentType = (title: string) => {
-      if (title.includes('인턴')) return 'intern';
-      if (title.includes('신입')) return 'newbie';
-      if (title.includes('경력')) return 'experienced';
-      return 'newbie';
+      if (title.includes('인턴')) return 'INTERNSHIP';
+      if (title.includes('파트타임') || title.includes('파트타임')) return 'PART_TIME';
+      if (title.includes('계약직') || title.includes('계약')) return 'CONTRACT';
+      if (title.includes('프리랜서') || title.includes('프리')) return 'FREELANCE';
+      if (title.includes('신입') || title.includes('경력')) return 'FULL_TIME';
+      return 'FULL_TIME'; // 기본값
     };
 
     return {
@@ -118,7 +121,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       description: "",
       team: "",
       position: "",
-      employmentType: "",
+      employmentType: "", // 기본값 설정 - 사용자가 선택하도록
       startDate: "",
       endDate: "",
       evaluationDeadline: "", // 평가 마감일 필드 추가

@@ -17,7 +17,7 @@ public class ResumeItemCreateRequestDto {
 
     private String name; // 항목명
     private ResumeItemType type; // 타입 (숫자, 날짜, 파일, 텍스트)
-    private Integer scoreWeight; // 배점
     private Boolean isRequired; // 필수여부
+    private Integer maxScore; // 최대점수
     private List<ResumeItemCriterionCreateRequestDto> criteria; // 평가기준 목록
 }

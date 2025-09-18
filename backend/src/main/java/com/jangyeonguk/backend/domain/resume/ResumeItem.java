@@ -29,16 +29,18 @@ public class ResumeItem {
     @Enumerated(EnumType.STRING)
     private ResumeItemType type; // 타입 (숫자, 날짜, 파일, 텍스트)
 
-    @Column(name = "score_weight")
-    private Integer scoreWeight; // 배점
 
     @Column(name = "is_required")
     private Boolean isRequired; // 필수여부
+
+    @Column(name = "max_score")
+    private Integer maxScore; // 최대점수
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_posting_id")
     private JobPosting jobPosting;
 
     @OneToMany(mappedBy = "resumeItem", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
     private List<ResumeItemCriterion> criteria = new ArrayList<>();
 }

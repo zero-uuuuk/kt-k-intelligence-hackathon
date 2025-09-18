@@ -32,8 +32,6 @@ public class CoverLetterQuestion {
     @Column(name = "max_characters")
     private Integer maxCharacters; // 최대글자수
 
-    @Column(name = "weight")
-    private Integer weight; // 가중치
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_posting_id")

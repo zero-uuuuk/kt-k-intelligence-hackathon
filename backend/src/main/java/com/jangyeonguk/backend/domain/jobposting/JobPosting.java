@@ -63,6 +63,12 @@ public class JobPosting {
     @Column(name = "total_score")
     private Integer totalScore; // 총점
 
+    @Column(name = "resume_score_weight")
+    private Integer resumeScoreWeight; // 이력서 배점 비중
+
+    @Column(name = "cover_letter_score_weight")
+    private Integer coverLetterScoreWeight; // 자기소개서 배점 비중
+
     @Column(name = "passing_score")
     private Integer passingScore; // 합격기준점수
 
@@ -76,17 +82,6 @@ public class JobPosting {
     @Column(name = "posting_status")
     private PostingStatus postingStatus; // 공고상태
 
-    @Column(name = "evaluation_criteria_example_file_name")
-    private String evaluationCriteriaExampleFileName; // 평가 기준 예시 파일명
-
-    @Column(name = "evaluation_criteria_example_file_path")
-    private String evaluationCriteriaExampleFilePath; // 평가 기준 예시 파일 경로
-
-    @Column(name = "cover_letter_example_file_name")
-    private String coverLetterExampleFileName; // 자기소개서 예시 파일명
-
-    @Column(name = "cover_letter_example_file_path")
-    private String coverLetterExampleFilePath; // 자기소개서 예시 파일 경로
 
     @Column(name = "public_link_url")
     private String publicLinkUrl; // 공개 링크 URL
@@ -96,11 +91,14 @@ public class JobPosting {
     private Company company;
 
     @OneToMany(mappedBy = "jobPosting", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
     private List<ResumeItem> resumeItems = new ArrayList<>();
 
     @OneToMany(mappedBy = "jobPosting", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
     private List<CoverLetterQuestion> coverLetterQuestions = new ArrayList<>();
 
     @OneToMany(mappedBy = "jobPosting", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
     private List<Application> applications = new ArrayList<>();
 }
