@@ -34,8 +34,8 @@ public class Application {
     @Column(name = "evaluation_comment", columnDefinition = "TEXT")
     private String evaluationComment; // 평가 의견
 
-    @Column(name = "ai_reliability_score")
-    private Double aiReliabilityScore; // AI 신뢰도 점수
+    @Column(name = "resume_quantitative_score")
+    private Integer resumeQuantitativeScore; // 이력서 정량 점수
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "applicant_id")

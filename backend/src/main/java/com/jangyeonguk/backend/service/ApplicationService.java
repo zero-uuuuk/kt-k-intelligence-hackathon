@@ -374,6 +374,24 @@ public class ApplicationService {
                 }
             }
 
+            // ResumeItemAnswer에 평가 점수 저장
+            if (evaluationResult.getResumeEvaluations() != null) {
+                for (EvaluationResultDto.ResumeEvaluationDto resumeEval : evaluationResult.getResumeEvaluations()) {
+                    // ResumeItemAnswer 조회 및 업데이트
+                    List<ResumeItemAnswer> resumeAnswers = resumeItemAnswerRepository.findByApplicationIdAndResumeItemId(
+                            application.getId(), resumeEval.getResumeItemId());
+                    
+                    if (!resumeAnswers.isEmpty()) {
+                        ResumeItemAnswer resumeAnswer = resumeAnswers.get(0);
+                        resumeAnswer.setResumeScore(resumeEval.getScore());
+                        resumeItemAnswerRepository.save(resumeAnswer);
+                        
+                        log.info("ResumeItemAnswer 점수 저장 - Application ID: {}, ResumeItem ID: {}, Score: {}", 
+                                application.getId(), resumeEval.getResumeItemId(), resumeEval.getScore());
+                    }
+                }
+            }
+
             // 평가 결과 저장
             EvaluationResult evaluationResultEntity = EvaluationResult.builder()
                     .application(application)

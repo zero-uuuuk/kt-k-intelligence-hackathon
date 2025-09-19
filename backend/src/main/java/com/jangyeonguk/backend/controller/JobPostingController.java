@@ -66,5 +66,13 @@ public class JobPostingController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * 채용공고와 모든 지원서 데이터 조회 (통합 API)
+     */
+    @GetMapping("/{id}/with-applications")
+    public ResponseEntity<JobPostingResponseDto> getJobPostingWithApplications(@PathVariable Long id) {
+        JobPostingResponseDto response = jobPostingService.getJobPostingWithApplications(id);
+        return ResponseEntity.ok(response);
+    }
 
 }

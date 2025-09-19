@@ -5,6 +5,7 @@ import com.jangyeonguk.backend.domain.jobposting.JobPosting;
 import com.jangyeonguk.backend.domain.jobposting.PostingStatus;
 import com.jangyeonguk.backend.dto.coverletter.CoverLetterQuestionResponseDto;
 import com.jangyeonguk.backend.dto.resume.ResumeItemResponseDto;
+import com.jangyeonguk.backend.dto.application.ApplicationResponseDto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -53,6 +54,7 @@ public class JobPostingResponseDto {
     // 중첩된 구조
     private List<ResumeItemResponseDto> resumeItems; // 이력서 항목 목록
     private List<CoverLetterQuestionResponseDto> coverLetterQuestions; // 자기소개서 질문 목록
+    private List<ApplicationResponseDto> applications; // 지원서 목록 (통합 API용)
 
     /**
      * JobPosting 엔티티를 JobPostingResponseDto로 변환
@@ -89,6 +91,49 @@ public class JobPostingResponseDto {
                 .coverLetterQuestions(jobPosting.getCoverLetterQuestions() != null ?
                         jobPosting.getCoverLetterQuestions().stream()
                                 .map(CoverLetterQuestionResponseDto::from)
+                                .collect(Collectors.toList()) : new ArrayList<>())
+                .build();
+    }
+
+    /**
+     * JobPosting 엔티티를 JobPostingResponseDto로 변환 (지원서 데이터 포함)
+     */
+    public static JobPostingResponseDto fromWithApplications(JobPosting jobPosting) {
+        return JobPostingResponseDto.builder()
+                .id(jobPosting.getId())
+                .title(jobPosting.getTitle())
+                .teamDepartment(jobPosting.getTeamDepartment())
+                .jobRole(jobPosting.getJobRole())
+                .employmentType(jobPosting.getEmploymentType())
+                .applicationStartDate(jobPosting.getApplicationStartDate() != null ? jobPosting.getApplicationStartDate().toLocalDate() : null)
+                .applicationEndDate(jobPosting.getApplicationEndDate() != null ? jobPosting.getApplicationEndDate().toLocalDate() : null)
+                .evaluationEndDate(jobPosting.getEvaluationEndDate() != null ? jobPosting.getEvaluationEndDate().toLocalDate() : null)
+                .description(jobPosting.getDescription())
+                .experienceRequirements(jobPosting.getExperienceRequirements())
+                .educationRequirements(jobPosting.getEducationRequirements())
+                .requiredSkills(jobPosting.getRequiredSkills())
+                .totalScore(jobPosting.getTotalScore())
+                .resumeScoreWeight(jobPosting.getResumeScoreWeight())
+                .coverLetterScoreWeight(jobPosting.getCoverLetterScoreWeight())
+                .passingScore(jobPosting.getPassingScore())
+                .aiAutomaticEvaluation(jobPosting.getAiAutomaticEvaluation())
+                .manualReview(jobPosting.getManualReview())
+                .postingStatus(jobPosting.getPostingStatus())
+                .publicLinkUrl(jobPosting.getPublicLinkUrl())
+                .companyId(jobPosting.getCompany().getId())
+                .companyName(jobPosting.getCompany().getName())
+                .applicationCount(jobPosting.getApplications() != null ? jobPosting.getApplications().size() : 0)
+                .resumeItems(jobPosting.getResumeItems() != null ?
+                        jobPosting.getResumeItems().stream()
+                                .map(ResumeItemResponseDto::from)
+                                .collect(Collectors.toList()) : new ArrayList<>())
+                .coverLetterQuestions(jobPosting.getCoverLetterQuestions() != null ?
+                        jobPosting.getCoverLetterQuestions().stream()
+                                .map(CoverLetterQuestionResponseDto::from)
+                                .collect(Collectors.toList()) : new ArrayList<>())
+                .applications(jobPosting.getApplications() != null ?
+                        jobPosting.getApplications().stream()
+                                .map(ApplicationResponseDto::from)
                                 .collect(Collectors.toList()) : new ArrayList<>())
                 .build();
     }

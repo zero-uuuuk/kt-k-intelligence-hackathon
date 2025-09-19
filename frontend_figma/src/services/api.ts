@@ -455,6 +455,12 @@ export const applicationApi = {
   processEvaluationResult: async (evaluationResult: any): Promise<string> => {
     const response = await api.post('/applications/evaluation-result', evaluationResult);
     return response.data;
+  },
+
+  // 새로운 통합 API: 공고별 모든 데이터 조회 (지원서, 이력서, 자소서, 평가결과 포함)
+  getJobPostingWithApplications: async (jobPostingId: number): Promise<any> => {
+    const response = await api.get(`/job-postings/${jobPostingId}/with-applications`);
+    return response.data;
   }
 };
 

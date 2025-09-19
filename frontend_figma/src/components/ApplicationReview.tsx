@@ -1,17 +1,78 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search, FileText, ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp, Sun, Moon, User, Brain, Target, TrendingUp, AlertTriangle, CheckCircle, XCircle, Award, GraduationCap, ShieldCheck, Heart, Zap, BookOpen, Lightbulb, Eye, MessageSquare, Briefcase, Star } from "lucide-react";
-import { useApplicationsByJobPosting, useEvaluationMutation, useApiUtils, useJobPostings, useApplicationEvaluationResult, useCoverLetterQuestions } from '../hooks/useApi';
-import { ApplicationResponseDto, ApplicationStatus } from '../services/api';
+import { useJobPostingWithApplications, useEvaluationMutation, useApiUtils } from '../hooks/useApi';
+import { ApplicationStatus } from '../services/api';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { Separator } from "./ui/separator";
+// 새로운 통합 데이터 타입 정의
+interface ResumeItemData {
+  id: number;
+  name: string;
+  maxScore: number;
+  content: string;
+  score?: number;
+}
 
+interface CoverLetterQuestionData {
+  id: number;
+  questionContent: string;
+  answerContent: string;
+  charCount: string;
+  keywords: string[];
+  summary: string;
+  quantitativeScore?: number;
+  qualitativeEvaluation?: any;
+}
+
+interface EvaluationResultData {
+  id: number;
+  totalScore: number;
+  resumeScores: string; // JSON
+  coverLetterScores: string; // JSON
+  overallEvaluation: string; // JSON
+  evaluationCompletedAt?: string;
+}
+
+interface ApplicationData {
+  id: number;
+  status: ApplicationStatus;
+  totalEvaluationScore?: number;
+  evaluationComment?: string;
+  resumeQuantitativeScore?: number;
+  applicant: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  resumeItemAnswers: ResumeItemData[];
+  coverLetterQuestionAnswers: CoverLetterQuestionData[];
+  evaluationResult?: EvaluationResultData;
+}
+
+interface JobPostingData {
+  id: number;
+  title: string;
+  teamDepartment?: string;
+  jobRole?: string;
+  applicationStartDate: string;
+  applicationEndDate: string;
+  evaluationEndDate?: string;
+  totalScore: number;
+  resumeScoreWeight: number;
+  coverLetterScoreWeight: number;
+  passingScore: number;
+  aiAutomaticEvaluation: boolean;
+  manualReview: boolean;
+  postingStatus: string;
+  resumeItems: ResumeItemData[];
+  coverLetterQuestions: CoverLetterQuestionData[];
+  applications: ApplicationData[];
+}
+
+// 기존 인터페이스는 호환성을 위해 유지
 interface Applicant {
   id: string;
   name: string;
@@ -38,24 +99,38 @@ interface ApplicationReviewProps {
 }
 
 export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceId, memos, setMemos, applicantStatuses, setApplicantStatuses, getApplicantsByWorkspace }: ApplicationReviewProps) {
-  // API 호출
-  const { data: applications = [], isLoading: applicationsLoading } = useApplicationsByJobPosting(
-    currentWorkspaceId ? parseInt(currentWorkspaceId) : 0
+  // 새로운 통합 API 호출 - 공고별 모든 데이터를 한번에 가져옴
+  const { 
+    data: jobPostingData, 
+    isLoading: jobPostingLoading, 
+    error: jobPostingError 
+  } = useJobPostingWithApplications(
+    currentWorkspaceId ? (currentWorkspaceId === "2" ? 1 : parseInt(currentWorkspaceId)) : 0
   );
-  const { data: jobPostings = [] } = useJobPostings();
+  
   const evaluationMutation = useEvaluationMutation();
   const apiUtils = useApiUtils();
 
+  // 통합 데이터에서 필요한 정보 추출
+  const applications = jobPostingData?.applications || [];
+  const jobPosting = jobPostingData;
+  const resumeItems = jobPostingData?.resumeItems || [];
+  const coverLetterQuestions = jobPostingData?.coverLetterQuestions || [];
+
   // API에서 가져온 지원자 데이터를 프론트엔드 형식으로 변환
-  const convertApplicationsToApplicants = (applications: ApplicationResponseDto[]): Applicant[] => {
+  const convertApplicationsToApplicants = (applications: ApplicationData[]): Applicant[] => {
     return applications.map(app => ({
       id: app.id.toString(),
-      name: app.applicantName,
-      email: app.applicantEmail,
-      score: 0, // TODO: 실제 점수는 별도 API에서 가져와야 함
+      name: app.applicant.name,
+      email: app.applicant.email,
+      score: app.evaluationResult?.totalScore || app.totalEvaluationScore || 0,
       status: apiUtils.convertApplicationStatus(app.status),
-      keywords: [], // TODO: 실제 키워드는 별도 API에서 가져와야 함
-      questions: [] // TODO: 실제 질문/답변은 별도 API에서 가져와야 함
+      keywords: app.coverLetterQuestionAnswers.flatMap(q => q.keywords || []),
+      questions: app.coverLetterQuestionAnswers.map(q => ({
+        question: q.questionContent,
+        answer: q.answerContent,
+        charCount: q.charCount
+      }))
     }));
   };
 
@@ -72,15 +147,18 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
   const [selectedApplicant, setSelectedApplicant] = useState(getDefaultApplicant(currentWorkspaceId ?? null));
 
   // 현재 공고의 이력서 점수 비중 가져오기
-  const currentJobPosting = jobPostings.find(jp => jp.id.toString() === currentWorkspaceId);
-  const resumeScoreWeight = currentJobPosting?.resumeScoreWeight || 50; // 기본값 50점
+  const resumeScoreWeight = jobPosting?.resumeScoreWeight || 50; // 기본값 50점
 
-  // 선택된 지원자의 평가 결과 가져오기
+  // 선택된 지원자의 데이터 가져오기
   const selectedApplicantForEvaluation = applicants.find(app => app.name === selectedApplicant);
-  const applicationId = selectedApplicantForEvaluation?.id ? parseInt(selectedApplicantForEvaluation.id) : null;
+  const selectedApplicationData = applications.find(app => app.applicant.name === selectedApplicant);
   
-  const { data: evaluationResult, isLoading: evaluationLoading, error: evaluationError } = useApplicationEvaluationResult(applicationId);
-  const { data: coverLetterQuestionsData, isLoading: coverLetterLoading, error: coverLetterError } = useCoverLetterQuestions(applicationId);
+  // 선택된 지원자의 평가 결과와 자기소개서 데이터
+  const evaluationResult = selectedApplicationData?.evaluationResult;
+  const coverLetterQuestionsData = selectedApplicationData ? {
+    coverLetterQuestions: selectedApplicationData.coverLetterQuestionAnswers,
+    totalQuestions: selectedApplicationData.coverLetterQuestionAnswers.length
+  } : null;
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScoreDetails, setShowScoreDetails] = useState(false);
@@ -90,13 +168,10 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   // API 오류 로깅
   useEffect(() => {
-    if (evaluationError) {
-      console.error('평가 결과 API 오류:', evaluationError);
+    if (jobPostingError) {
+      console.error('공고 데이터 API 오류:', jobPostingError);
     }
-    if (coverLetterError) {
-      console.error('자기소개서 질문 API 오류:', coverLetterError);
-    }
-  }, [evaluationError, coverLetterError]);
+  }, [jobPostingError]);
 
   // 지원자 데이터가 변경되면 선택된 지원자 업데이트
   useEffect(() => {
@@ -111,37 +186,30 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     ), [searchQuery, applicants]
   );
 
-  // 평가 상태별로 지원자를 그룹화 (실시간 상태 반영)
+  // ApplicationStatus를 기반으로 지원자를 그룹화
   const categorizedApplicants = useMemo(() => {
-    const applicantsWithCurrentStatus = filteredApplicants.map(applicant => ({
-      ...applicant,
-      currentStatus: applicantStatuses[applicant.id] || applicant.status
-    }));
-
-    const notEvaluated = applicantsWithCurrentStatus.filter(applicant => 
-      applicant.currentStatus === 'not-evaluated' || applicant.currentStatus === 'pending'
-    );
-    const evaluated = applicantsWithCurrentStatus.filter(applicant => 
-      applicant.currentStatus === 'passed' || applicant.currentStatus === 'failed'
-    );
-    const unqualified = applicantsWithCurrentStatus.filter(applicant => 
-      applicant.currentStatus === 'unqualified'
-    );
+    const beforeEvaluation = applications.filter(app => app.status === 'BEFORE_EVALUATION');
+    const inProgress = applications.filter(app => app.status === 'IN_PROGRESS');
+    const accepted = applications.filter(app => app.status === 'ACCEPTED');
+    const rejected = applications.filter(app => app.status === 'REJECTED');
+    const onHold = applications.filter(app => app.status === 'ON_HOLD');
     
     return {
-      notEvaluated: notEvaluated.sort((a, b) => a.name.localeCompare(b.name)),
-      evaluated: evaluated.sort((a, b) => a.name.localeCompare(b.name)),
-      unqualified: unqualified.sort((a, b) => a.name.localeCompare(b.name))
+      beforeEvaluation: beforeEvaluation.sort((a, b) => a.applicant.name.localeCompare(b.applicant.name)),
+      inProgress: inProgress.sort((a, b) => a.applicant.name.localeCompare(b.applicant.name)),
+      accepted: accepted.sort((a, b) => a.applicant.name.localeCompare(b.applicant.name)),
+      rejected: rejected.sort((a, b) => a.applicant.name.localeCompare(b.applicant.name)),
+      onHold: onHold.sort((a, b) => a.applicant.name.localeCompare(b.applicant.name))
     };
-  }, [filteredApplicants, applicantStatuses]);
+  }, [applications]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'passed': return 'bg-blue-500';
-      case 'failed': return 'bg-red-500';
-      case 'pending': return 'bg-yellow-500';
-      case 'not-evaluated': return 'bg-gray-400';
-      case 'unqualified': return 'bg-red-600';
+      case 'ACCEPTED': return 'bg-green-500';
+      case 'REJECTED': return 'bg-red-500';
+      case 'ON_HOLD': return 'bg-yellow-500';
+      case 'IN_PROGRESS': return 'bg-blue-500';
+      case 'BEFORE_EVALUATION': return 'bg-gray-400';
       default: return 'bg-gray-400';
     }
   };
@@ -227,9 +295,9 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     }
   };
 
-  // 실제 평가 결과에서 점수 세부사항 계산 - resumeScores JSON 파싱
+  // 실제 평가 결과에서 점수 세부사항 계산 - 새로운 통합 데이터 구조 사용
   const getDetailedScores = () => {
-    if (!evaluationResult) {
+    if (!selectedApplicationData) {
       return {
         resumeItems: [],
         coverLetterItems: [],
@@ -238,51 +306,18 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       };
     }
 
-    // resume_scores JSON 파싱
-    let resumeEvaluations: any[] = [];
-    try {
-      if (typeof evaluationResult.resume_scores === 'string') {
-        resumeEvaluations = JSON.parse(evaluationResult.resume_scores);
-      } else if (Array.isArray(evaluationResult.resume_scores)) {
-        resumeEvaluations = evaluationResult.resume_scores;
-      }
-    } catch (error) {
-      console.error('resume_scores 파싱 오류:', error);
-      resumeEvaluations = [];
-    }
-
-    // 현재 공고의 ResumeItem 정보 가져오기
-    const currentJobPosting = jobPostings.find(jp => jp.id.toString() === currentWorkspaceId);
-    const resumeItems = currentJobPosting?.resumeItems || [];
-
-    // 이력서 평가 결과와 ResumeItem 정보 연결
-    const resumeItemsWithDetails = resumeEvaluations.map(evalItem => {
-      // resumeItemId로 ResumeItem 조회 (타입 변환 고려)
-      const resumeItem = resumeItems.find(item => 
-        item.id === evalItem.resumeItemId || 
-        item.id === Number(evalItem.resumeItemId) ||
-        Number(item.id) === evalItem.resumeItemId
-      );
-      
-      const maxScore = evalItem.maxScore !== undefined ? evalItem.maxScore : (resumeItem?.maxScore !== undefined ? resumeItem.maxScore : 10);
-      
-    return {
-        name: resumeItem?.name || evalItem.resumeItemName || '알 수 없는 항목',
-        score: evalItem.score || 0,
-        maxScore: maxScore, // maxScore가 0이어도 유효한 값으로 처리
-        content: evalItem.resumeContent || '',
-        description: `${resumeItem?.name || evalItem.resumeItemName}: ${evalItem.score || 0}/${maxScore}점`
+    // 이력서 항목 데이터 (실제 지원자 응답과 평가 결과)
+    const resumeItemsWithDetails = selectedApplicationData.resumeItemAnswers.map(answer => {
+      return {
+        name: answer.resumeItemName || '알 수 없는 항목',
+        score: answer.resumeScore || 0,
+        maxScore: answer.maxScore || 10,
+        content: answer.resumeContent || '',
+        description: `${answer.resumeItemName || '알 수 없는 항목'}: ${answer.resumeScore || 0}/${answer.maxScore || 10}점`
       };
     });
 
-    // 자기소개서 평가 결과를 그대로 반환
-    const coverLetterItems = evaluationResult.coverLetterQuestionEvaluations?.map(item => ({
-      name: `자기소개서 문항 ${item.coverLetterQuestionId}`,
-      score: item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3, // EXCELLENT/GOOD이면 5점, NORMAL/POOR이면 3점
-      maxScore: 5,
-      content: item.summary || '',
-      description: `자기소개서: ${item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3}/5점`
-    })) || [];
+
 
     // 총점 계산
     const totalResumeScore = resumeItemsWithDetails.reduce((sum, item) => sum + item.score, 0);
@@ -290,7 +325,6 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
         return {
       resumeItems: resumeItemsWithDetails,
-      coverLetterItems,
       totalResumeScore,
       totalMaxScore
     };
@@ -326,16 +360,12 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                const evaluationReason = answerEval.evaluationReason || answerEval.reason || '';
                
                let scoreLevel = '';
-               if (grade === 'EXCELLENT' || grade === 'excellent') {
-                 scoreLevel = 'excellent';
-               } else if (grade === 'GOOD' || grade === 'good') {
-                 scoreLevel = 'good';
-               } else if (grade === 'NORMAL' || grade === 'normal') {
-                 scoreLevel = 'normal';
-               } else if (grade === 'POOR' || grade === 'poor') {
-                 scoreLevel = 'poor';
-      } else {
-                 scoreLevel = 'average';
+               if (grade === 'POSITIVE' || grade === 'positive') {
+                 scoreLevel = 'positive';
+               } else if (grade === 'NEGATIVE' || grade === 'negative') {
+                 scoreLevel = 'negative';
+               } else {
+                 scoreLevel = 'neutral';
                }
                
                // 3개 항목으로 구성: 기준, 이유, 해당 내용
@@ -388,10 +418,10 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
      };
    };
 
-  // AI 분석 데이터 - evaluationResult에서 실제 데이터 사용
+  // AI 분석 데이터 - 새로운 통합 데이터 구조 사용
   const getAIAnalysis = (applicantName: string) => {
     // 로딩 중인 경우
-    if (evaluationLoading) {
+    if (jobPostingLoading) {
       return {
         overallAssessment: '평가 데이터를 불러오는 중입니다.',
         strengths: ['데이터를 불러오는 중입니다.'],
@@ -403,7 +433,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     }
 
     // 오류가 있는 경우
-    if (evaluationError) {
+    if (jobPostingError) {
       return {
         overallAssessment: '평가 데이터를 불러오는 중 오류가 발생했습니다.',
         strengths: ['오류로 인해 데이터를 불러올 수 없습니다.'],
@@ -416,34 +446,12 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
     // evaluationResult에서 실제 데이터 사용
     if (evaluationResult) {
-      // overallAnalysis가 있는 경우 (새로운 DTO 구조)
-      if (evaluationResult.overallAnalysis) {
-        const overallAnalysis = evaluationResult.overallAnalysis;
-        
-      return {
-          overallAssessment: overallAnalysis.overallEvaluation || '종합 평가를 진행 중입니다.',
-          strengths: overallAnalysis.strengths && overallAnalysis.strengths.length > 0 
-            ? overallAnalysis.strengths 
-            : ['강점 분석을 진행 중입니다.'],
-          weaknesses: overallAnalysis.improvements && overallAnalysis.improvements.length > 0 
-            ? overallAnalysis.improvements 
-            : ['개선점 분석을 진행 중입니다.'],
-        keyInsights: [
-            'AI 분석을 통한 종합적인 평가 결과',
-            '이력서와 자기소개서를 종합한 역량 분석',
-            '지원자별 맞춤형 평가 기준 적용'
-          ],
-          recommendation: overallAnalysis.aiRecommendation || 'AI 추천 결과를 생성 중입니다.',
-          confidenceLevel: overallAnalysis.aiReliability || 0
-        };
-      }
-
-      // overall_evaluation이 있는 경우 (백엔드 DB 컬럼명)
-      if (evaluationResult.overall_evaluation) {
+      // overallEvaluation이 있는 경우
+      if (evaluationResult.overallEvaluation) {
         try {
-          const overallEval = typeof evaluationResult.overall_evaluation === 'string' 
-            ? JSON.parse(evaluationResult.overall_evaluation) 
-            : evaluationResult.overall_evaluation;
+          const overallEval = typeof evaluationResult.overallEvaluation === 'string' 
+            ? JSON.parse(evaluationResult.overallEvaluation) 
+            : evaluationResult.overallEvaluation;
           
     return {
             overallAssessment: overallEval.overallEvaluation || '종합 평가를 진행 중입니다.',
@@ -462,7 +470,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
             confidenceLevel: overallEval.aiReliability || 0
           };
         } catch (error) {
-          console.error('overall_evaluation 파싱 오류:', error);
+          console.error('overallEvaluation 파싱 오류:', error);
         }
       }
 
@@ -492,7 +500,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     };
   };
 
-  // 지원자별 데이터 - 실제 API 데이터 사용
+  // 지원자별 데이터 - 새로운 통합 데이터 구조 사용
   const getApplicantData = (applicantName: string) => {
     console.log('getApplicantData called for:', applicantName);
     console.log('coverLetterQuestionsData:', coverLetterQuestionsData);
@@ -515,8 +523,11 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
           answer: question.answerContent,
           tags: question.keywords || [],
           summary: question.summary || '',
-          coverLetterQuestionId: question.coverLetterQuestionId,
-          answerEvaluations: question.answerEvaluations || []
+          coverLetterQuestionId: question.id,
+          answerEvaluations: question.qualitativeEvaluation ? 
+            (typeof question.qualitativeEvaluation === 'string' 
+              ? JSON.parse(question.qualitativeEvaluation) 
+              : question.qualitativeEvaluation) : []
         };
       });
       console.log('Final result:', result);
@@ -537,17 +548,23 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   const detailedScores = useMemo(() => {
     return getDetailedScores();
-  }, [evaluationResult, jobPostings, currentWorkspaceId]);
+  }, [selectedApplicationData, resumeItems, coverLetterQuestions]);
 
-  // 실제 총점 계산
+  // 실제 총점 계산 - resumeScore 총합
   const actualTotalScore = useMemo(() => {
-    const scores = getDetailedScores();
-    return scores.totalResumeScore;
-  }, [evaluationResult, jobPostings, currentWorkspaceId]);
+    if (!selectedApplicationData) return 0;
+    return selectedApplicationData.resumeItemAnswers.reduce((sum, answer) => sum + (answer.resumeScore || 0), 0);
+  }, [selectedApplicationData]);
+
+  // 최대 점수 계산 - maxScore 총합
+  const actualMaxScore = useMemo(() => {
+    if (!selectedApplicationData) return 0;
+    return selectedApplicationData.resumeItemAnswers.reduce((sum, answer) => sum + (answer.maxScore || 0), 0);
+  }, [selectedApplicationData]);
 
   const aiAnalysis = useMemo(() => {
     return getAIAnalysis(selectedApplicant);
-  }, [selectedApplicant, evaluationResult, evaluationLoading, evaluationError]);
+  }, [selectedApplicant, evaluationResult, jobPostingLoading, jobPostingError]);
 
   const essayAnalysis = useMemo(() => {
     return getEssayAnalysis(selectedApplicant, currentQuestion);
@@ -765,38 +782,26 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
               if (evaluations.length === 1) {
                 // 단일 평가 기준
                 const grade = evaluations[0].grade;
-                if (grade === 'EXCELLENT') {
-                  return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
-                } else if (grade === 'GOOD') {
+                if (grade === 'POSITIVE') {
                   return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
-                } else if (grade === 'NORMAL') {
-                  return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-                } else if (grade === 'POOR') {
+                } else if (grade === 'NEGATIVE') {
                   return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
                 } else {
                   return 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300';
                 }
               } else {
                 // 다중 평가 기준 - 색상 혼합
-                const excellentCount = evaluations.filter(e => e.grade === 'EXCELLENT').length;
-                const goodCount = evaluations.filter(e => e.grade === 'GOOD').length;
-                const normalCount = evaluations.filter(e => e.grade === 'NORMAL').length;
-                const poorCount = evaluations.filter(e => e.grade === 'POOR').length;
+                const positiveCount = evaluations.filter(e => e.grade === 'POSITIVE').length;
+                const negativeCount = evaluations.filter(e => e.grade === 'NEGATIVE').length;
                 
-                if (excellentCount > 0) {
-                  // EXCELLENT이 있으면 - 진한 초록색
-                  return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
-                } else if (goodCount > 0) {
-                  // GOOD이 있으면 - 초록색
+                if (positiveCount > negativeCount) {
+                  // 긍정이 더 많으면 - 초록색
                   return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
-                } else if (normalCount > 0) {
-                  // NORMAL이 있으면 - 노란색
-                  return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-                } else if (poorCount > 0) {
-                  // POOR이 있으면 - 빨간색
+                } else if (negativeCount > positiveCount) {
+                  // 부정이 더 많으면 - 빨간색
                   return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
                 } else {
-                  // 기본값
+                  // 동일하면 - 회색
                   return 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300';
                 }
               }
@@ -845,12 +850,12 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
   };
 
   // 로딩 상태 처리
-  if (applicationsLoading) {
+  if (jobPostingLoading) {
     return (
       <div className="h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">지원서 데이터를 불러오는 중...</p>
+          <p className="text-gray-600">공고 및 지원서 데이터를 불러오는 중...</p>
         </div>
       </div>
     );
@@ -900,17 +905,20 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
               {/* Workspace Info */}
               <div className="p-4 border-b border-gray-200 dark:border-border bg-white dark:bg-background">
                 <h3 className="font-semibold text-gray-900 dark:text-foreground mb-1">
-                  {currentWorkspaceId === "2" ? "FE 신입사원 모집" : "BE 인턴십 8기 모집"}
+                  {jobPosting?.title || (currentWorkspaceId === "2" ? "FE 신입사원 모집" : "BE 인턴십 8기 모집")}
                 </h3>
                 <div className="space-y-2">
                   <div className="text-sm text-gray-600 dark:text-muted-foreground">
-                    {currentWorkspaceId === "2" ? "2025.09.03 ~ 2025.09.12" : "2025.09.01 ~ 2025.09.15"}
+                    {jobPosting?.applicationStartDate && jobPosting?.applicationEndDate 
+                      ? `${new Date(jobPosting.applicationStartDate).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })} ~ ${new Date(jobPosting.applicationEndDate).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}`
+                      : (currentWorkspaceId === "2" ? "2025.09.03 ~ 2025.09.12" : "2025.09.01 ~ 2025.09.15")
+                    }
                   </div>
                   <div className="text-sm text-gray-600 dark:text-muted-foreground">
-                    {applicants.length}개 지원서
+                    {applications.length}개 지원서
                   </div>
                   <div className="text-sm text-gray-600 dark:text-muted-foreground">
-                    평가완료 {categorizedApplicants.evaluated.length + categorizedApplicants.unqualified.length} / {applicants.length}
+                    평가완료 {applications.filter(app => app.status !== 'BEFORE_EVALUATION' && app.status !== 'IN_PROGRESS').length} / {applications.length}
                   </div>
                 </div>
               </div>
@@ -931,29 +939,29 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
               {/* Applicant List */}
               <div className="flex-1 overflow-y-auto">
                 <div className="p-4 space-y-4">
-                  {/* 평가 진행 전 섹션 */}
-                  {categorizedApplicants.notEvaluated.length > 0 && (
+                  {/* 평가 전 섹션 */}
+                  {categorizedApplicants.beforeEvaluation.length > 0 && (
                     <div>
                       <div className="text-sm font-semibold text-gray-900 dark:text-foreground mb-3">
-                        평가 진행 전 ({categorizedApplicants.notEvaluated.length}명)
+                        평가 전 ({categorizedApplicants.beforeEvaluation.length}명)
                       </div>
                       <div className="space-y-2">
-                        {categorizedApplicants.notEvaluated.map((applicant) => (
+                        {categorizedApplicants.beforeEvaluation.map((application) => (
                           <div
-                            key={applicant.id}
-                            onClick={() => setSelectedApplicant(applicant.name)}
+                            key={application.id}
+                            onClick={() => setSelectedApplicant(application.applicant.name)}
                             className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                              selectedApplicant === applicant.name
+                              selectedApplicant === application.applicant.name
                                 ? 'bg-blue-50 dark:bg-accent border-2 border-blue-200 dark:border-primary/20'
                                 : 'hover:bg-gray-100 dark:hover:bg-accent/50'
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-2 h-2 rounded-full ${getStatusColor(getCurrentStatus(applicant.name, applicant.status))}`} />
-                              <span className="font-medium text-foreground">{applicant.name}</span>
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
+                              <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(applicant.score)}`}>
-                              {applicant.score}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
+                              {application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -961,29 +969,29 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                     </div>
                   )}
 
-                  {/* 평가 완료 섹션 */}
-                  {categorizedApplicants.evaluated.length > 0 && (
-                    <div className={categorizedApplicants.notEvaluated.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
+                  {/* 평가 중 섹션 */}
+                  {categorizedApplicants.inProgress.length > 0 && (
+                    <div className={categorizedApplicants.beforeEvaluation.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
                       <div className="text-sm font-semibold text-gray-900 dark:text-foreground mb-3">
-                        평가 완료 ({categorizedApplicants.evaluated.length}명)
+                        평가 중 ({categorizedApplicants.inProgress.length}명)
                       </div>
                       <div className="space-y-2">
-                        {categorizedApplicants.evaluated.map((applicant) => (
+                        {categorizedApplicants.inProgress.map((application) => (
                           <div
-                            key={applicant.id}
-                            onClick={() => setSelectedApplicant(applicant.name)}
+                            key={application.id}
+                            onClick={() => setSelectedApplicant(application.applicant.name)}
                             className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-blue-50/30 dark:bg-blue-900/10 ${
-                              selectedApplicant === applicant.name
+                              selectedApplicant === application.applicant.name
                                 ? 'bg-blue-50 dark:bg-accent border-2 border-blue-200 dark:border-primary/20'
                                 : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-2 h-2 rounded-full ${getStatusColor(getCurrentStatus(applicant.name, applicant.status))}`} />
-                              <span className="font-medium text-foreground">{applicant.name}</span>
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
+                              <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(applicant.score)}`}>
-                              {applicant.score}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
+                              {application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -991,29 +999,89 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                     </div>
                   )}
 
-                  {/* 심사 기준 미충족 섹션 */}
-                  {categorizedApplicants.unqualified.length > 0 && (
-                    <div className={categorizedApplicants.notEvaluated.length > 0 || categorizedApplicants.evaluated.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
+                  {/* 합격 섹션 */}
+                  {categorizedApplicants.accepted.length > 0 && (
+                    <div className={categorizedApplicants.beforeEvaluation.length > 0 || categorizedApplicants.inProgress.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
                       <div className="text-sm font-semibold text-gray-900 dark:text-foreground mb-3">
-                        심사 기준 미충족 ({categorizedApplicants.unqualified.length}명)
+                        합격 ({categorizedApplicants.accepted.length}명)
                       </div>
                       <div className="space-y-2">
-                        {categorizedApplicants.unqualified.map((applicant) => (
+                        {categorizedApplicants.accepted.map((application) => (
                           <div
-                            key={applicant.id}
-                            onClick={() => setSelectedApplicant(applicant.name)}
+                            key={application.id}
+                            onClick={() => setSelectedApplicant(application.applicant.name)}
+                            className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-green-50/30 dark:bg-green-900/10 ${
+                              selectedApplicant === application.applicant.name
+                                ? 'bg-blue-50 dark:bg-accent border-2 border-blue-200 dark:border-primary/20'
+                                : 'hover:bg-green-50 dark:hover:bg-green-900/20'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
+                              <span className="font-medium text-foreground">{application.applicant.name}</span>
+                            </div>
+                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
+                              {application.evaluationResult?.totalScore || 0}점
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 불합격 섹션 */}
+                  {categorizedApplicants.rejected.length > 0 && (
+                    <div className={categorizedApplicants.beforeEvaluation.length > 0 || categorizedApplicants.inProgress.length > 0 || categorizedApplicants.accepted.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-foreground mb-3">
+                        불합격 ({categorizedApplicants.rejected.length}명)
+                      </div>
+                      <div className="space-y-2">
+                        {categorizedApplicants.rejected.map((application) => (
+                          <div
+                            key={application.id}
+                            onClick={() => setSelectedApplicant(application.applicant.name)}
                             className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-red-50/30 dark:bg-red-900/10 ${
-                              selectedApplicant === applicant.name
+                              selectedApplicant === application.applicant.name
                                 ? 'bg-blue-50 dark:bg-accent border-2 border-blue-200 dark:border-primary/20'
                                 : 'hover:bg-red-50 dark:hover:bg-red-900/20'
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-2 h-2 rounded-full ${getStatusColor(getCurrentStatus(applicant.name, applicant.status))}`} />
-                              <span className="font-medium text-foreground">{applicant.name}</span>
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
+                              <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(applicant.score)}`}>
-                              {applicant.score}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
+                              {application.evaluationResult?.totalScore || 0}점
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 보류 섹션 */}
+                  {categorizedApplicants.onHold.length > 0 && (
+                    <div className={categorizedApplicants.beforeEvaluation.length > 0 || categorizedApplicants.inProgress.length > 0 || categorizedApplicants.accepted.length > 0 || categorizedApplicants.rejected.length > 0 ? 'pt-4 border-t border-gray-200 dark:border-border' : ''}>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-foreground mb-3">
+                        보류 ({categorizedApplicants.onHold.length}명)
+                </div>
+                      <div className="space-y-2">
+                        {categorizedApplicants.onHold.map((application) => (
+                          <div
+                            key={application.id}
+                            onClick={() => setSelectedApplicant(application.applicant.name)}
+                            className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-yellow-50/30 dark:bg-yellow-900/10 ${
+                              selectedApplicant === application.applicant.name
+                                ? 'bg-blue-50 dark:bg-accent border-2 border-blue-200 dark:border-primary/20'
+                                : 'hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
+                              <span className="font-medium text-foreground">{application.applicant.name}</span>
+                            </div>
+                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
+                              {application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -1042,13 +1110,13 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                       </div>
                       <div className="text-right">
                         <div className="text-sm text-gray-600 dark:text-muted-foreground mb-1">총점</div>
-                        {evaluationLoading ? (
+                        {jobPostingLoading ? (
                           <div className="text-2xl font-semibold text-gray-400">로딩 중...</div>
-                        ) : evaluationError ? (
+                        ) : jobPostingError ? (
                           <div className="text-2xl font-semibold text-red-500">오류 발생</div>
                         ) : (
                           <div className={`text-2xl font-semibold ${getScoreColor(actualTotalScore)}`}>
-                            {actualTotalScore}점 / {detailedScores.totalMaxScore}점
+                            {actualTotalScore}점 / {actualMaxScore}점
                         </div>
                         )}
                       </div>
@@ -1066,104 +1134,22 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                       </Button>
                       
                       {showScoreDetails && (
-                        <div className="mt-4 space-y-4">
-                          {/* 이력서 항목들 - 실제 지원자 응답과 평가 결과 */}
+                        <div className="mt-4">
+                          {/* 이력서 항목들 - 2열 레이아웃 */}
                           {detailedScores.resumeItems.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">이력서 평가</h4>
-                              <div className="space-y-4">
-                                {detailedScores.resumeItems.map((item, index) => (
-                                  <div key={index} className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
-                                      <span className={`text-sm font-medium ${getScoreColor(item.score)}`}>
-                                        {item.score}/{item.maxScore}점
-                              </span>
-                            </div>
-                                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                                      <span className="font-medium">지원자 응답: </span>
-                                      <span className="italic">"{item.content}"</span>
-                            </div>
-                            </div>
-                                ))}
-                          </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              {detailedScores.resumeItems.map((item, index) => (
+                                <div key={index} className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
+                                  <span className={`text-sm font-medium ${getScoreColor(item.score)}`}>
+                                    {item.score}/{item.maxScore}점
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           )}
                           
-                          {/* 자기소개서 항목들 - 실제 지원자 응답과 평가 결과 */}
-                          {evaluationResult?.coverLetterQuestionEvaluations && evaluationResult.coverLetterQuestionEvaluations.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">자기소개서 평가</h4>
-                              <div className="space-y-4">
-                                {evaluationResult.coverLetterQuestionEvaluations.map((item, index) => (
-                                  <div key={index} className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        자기소개서 문항 {item.coverLetterQuestionId}
-                                      </span>
-                                      <span className={`text-sm font-medium ${getScoreColor(item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3)}`}>
-                                        {item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3}/5점
-                              </span>
-                            </div>
-                                    
-                                    {/* 평가 결과 */}
-                                    {item.answerEvaluations && item.answerEvaluations.length > 0 && (
-                                      <div className="space-y-2">
-                                        {item.answerEvaluations.map((evaluation, evalIndex) => (
-                                          <div key={evalIndex} className="text-sm border-l-2 border-gray-200 dark:border-gray-700 pl-3 mb-3">
-                                            <div className="flex items-center gap-2 mb-2">
-                                              <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                {evaluation.evaluationCriteriaName || '평가 결과'}:
-                                              </span>
-                                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                                evaluation.grade === 'EXCELLENT' 
-                                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                                                  : evaluation.grade === 'GOOD'
-                                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                                  : evaluation.grade === 'NORMAL'
-                                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                                  : evaluation.grade === 'POOR'
-                                                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
-                                              }`}>
-                                                {evaluation.grade}
-                              </span>
-                            </div>
-                                            <div className="text-gray-600 dark:text-gray-400 mb-1">
-                                              <span className="font-medium">평가된 내용: </span>
-                                              <span className="italic">"{evaluation.evaluatedContent}"</span>
-                          </div>
-                                            <div className="text-gray-600 dark:text-gray-400">
-                                              <span className="font-medium">평가 이유: </span>
-                                              <span>{evaluation.evaluationReason}</span>
-                                            </div>
-                                          </div>
-                                        ))}
-                        </div>
-                      )}
-                                    
-                                    
-                                    {/* 요약 */}
-                                    {item.summary && (
-                                      <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                                        <span className="font-medium">요약: </span>
-                                        <span>{item.summary}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* 평가 결과가 없는 경우 */}
-                          {(!evaluationResult?.resumeEvaluations || evaluationResult.resumeEvaluations.length === 0) && 
-                           (!evaluationResult?.coverLetterQuestionEvaluations || evaluationResult.coverLetterQuestionEvaluations.length === 0) && (
-                            <div className="text-center py-8">
-                              <p className="text-sm text-gray-500 dark:text-gray-400">평가 결과가 없습니다.</p>
-                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">평가가 완료되면 점수가 표시됩니다.</p>
-                            </div>
-                          )}
+                        
                         </div>
                       )}
                     </div>
@@ -1347,22 +1333,20 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               {Object.entries(essayAnalysis.evaluationCriteria).map(([key, criteria]) => {
                                 // 평가 등급에 따른 색상 결정
                                 const getScoreColor = (scoreLevel: string) => {
-                                  if (scoreLevel === 'excellent') return 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20';
-                                  if (scoreLevel === 'poor') return 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20';
-                                  return 'border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20';
+                                  if (scoreLevel === 'positive') return 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20';
+                                  if (scoreLevel === 'negative') return 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20';
+                                  return 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/20';
                                 };
                                 
                                 const getTextColor = (scoreLevel: string) => {
-                                  if (scoreLevel === 'excellent') return 'text-green-800 dark:text-green-200';
-                                  if (scoreLevel === 'poor') return 'text-red-800 dark:text-red-200';
-                                  return 'text-purple-800 dark:text-purple-200';
+                                  if (scoreLevel === 'positive') return 'text-green-800 dark:text-green-200';
+                                  if (scoreLevel === 'negative') return 'text-red-800 dark:text-red-200';
+                                  return 'text-gray-800 dark:text-gray-200';
                                 };
                                 
                                 const getGradeIcon = (grade: string) => {
-                                  if (grade === 'EXCELLENT') return '🌟';
-                                  if (grade === 'GOOD') return '✅';
-                                  if (grade === 'NORMAL') return '📝';
-                                  if (grade === 'POOR') return '❌';
+                                  if (grade === 'POSITIVE') return '✅';
+                                  if (grade === 'NEGATIVE') return '❌';
                                   return '📝';
                                 };
                                 

@@ -57,7 +57,7 @@ class ResumeEvaluation(BaseModel):
 
 class CoverLetterAnswerEvaluation(BaseModel):
     evaluationCriteriaName: str
-    grade: str  # 'EXCELLENT', 'GOOD', 'NORMAL', 'POOR'만 허용
+    grade: str  # 'POSITIVE', 'NEGATIVE'만 허용
     evaluatedContent: str
     evaluationReason: str
 
@@ -88,7 +88,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
     """
     TEMP DATA 생성 (현실적인 데이터)
     """
-    # 이력서 평가 결과 생성
+    # 이력서 평가 결과 생성 - 모든 이력서 항목에 대해 평가
     resume_evaluations = []
     if request.resumeItemAnswers:
         for answer in request.resumeItemAnswers:
@@ -100,15 +100,19 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
                 score = random.randint(5, 9)   # 경험은 중간~높게
             elif '자격' in item_name or '증명' in item_name:
                 score = random.randint(6, 10)  # 자격증은 보통 높게
+            elif '봉사' in item_name or '활동' in item_name:
+                score = random.randint(6, 9)   # 봉사활동은 보통 높게
+            elif '글자' in item_name or '자수' in item_name:
+                score = random.randint(3, 6)   # 글자수는 낮게
             else:
                 score = random.randint(4, 8)   # 기타 항목은 중간 정도
-        
-        resume_evaluations.append(ResumeEvaluation(
+            
+            resume_evaluations.append(ResumeEvaluation(
                 resumeItemId=answer.get('resumeItemId', 0),
                 resumeItemName=answer.get('resumeItemName', '항목'),
                 resumeContent=answer.get('resumeContent', '내용'),
                 score=score
-        ))
+            ))
     
     # 자기소개서 평가 결과 생성
     cover_letter_evaluations = []
@@ -119,9 +123,9 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
             
             # 답변 길이와 내용에 따라 평가 결정
             if len(answer_content) > 50:
-                grade = random.choice(['EXCELLENT', 'GOOD', 'GOOD', 'NORMAL'])  # 긍정에 가중치
+                grade = random.choice(['POSITIVE', 'POSITIVE', 'POSITIVE', 'NEGATIVE'])  # 긍정에 가중치
             else:
-                grade = random.choice(['GOOD', 'NORMAL', 'POOR'])  # 짧으면 부정에 가중치
+                grade = random.choice(['POSITIVE', 'NEGATIVE', 'NEGATIVE'])  # 짧으면 부정에 가중치
             
             # 실제 답변 내용에서 일부 추출 (처음 50자)
             evaluated_content = answer_content[:50] + "..." if len(answer_content) > 50 else answer_content
@@ -138,7 +142,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
                 keywords = ["기본", "평가", "답변"]
             
             # 평가 이유 생성
-            if grade in ['EXCELLENT', 'GOOD']:
+            if grade == 'POSITIVE':
                 evaluation_reason = f"구체적이고 명확한 답변으로 {', '.join(keywords)}을 잘 표현함"
             else:
                 evaluation_reason = f"답변이 다소 부족하여 {', '.join(keywords)}에 대한 구체적 설명이 필요함"
@@ -151,10 +155,10 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
             
             if answer_length > 0:
                 # 1. 내용 평가 - 앞부분 (0-33%)
-                content_grade = random.choice(['EXCELLENT', 'GOOD', 'NORMAL']) if answer_length > 50 else random.choice(['GOOD', 'NORMAL', 'POOR'])
+                content_grade = random.choice(['POSITIVE', 'POSITIVE', 'NEGATIVE']) if answer_length > 50 else random.choice(['POSITIVE', 'NEGATIVE', 'NEGATIVE'])
                 content_end = max(1, answer_length // 3)
                 content_evaluated = answer_content[:content_end]
-                content_reason = f"내용의 구체성과 완성도가 {'우수' if content_grade in ['EXCELLENT', 'GOOD'] else '부족'}함"
+                content_reason = f"내용의 구체성과 완성도가 {'우수' if content_grade == 'POSITIVE' else '부족'}함"
                 
                 answer_evaluations.append(CoverLetterAnswerEvaluation(
                     evaluationCriteriaName="내용 평가",
@@ -165,11 +169,11 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
             
             if answer_length > 1:
                 # 2. 표현력 평가 - 중간부분 (33%-66%)
-                expression_grade = random.choice(['EXCELLENT', 'GOOD', 'NORMAL']) if answer_length > 100 else random.choice(['GOOD', 'NORMAL', 'POOR'])
+                expression_grade = random.choice(['POSITIVE', 'POSITIVE', 'NEGATIVE']) if answer_length > 100 else random.choice(['POSITIVE', 'NEGATIVE', 'NEGATIVE'])
                 expression_start = max(1, answer_length // 3)
                 expression_end = max(expression_start + 1, (answer_length * 2) // 3)
                 expression_evaluated = answer_content[expression_start:expression_end]
-                expression_reason = f"문장 구성과 표현력이 {'뛰어남' if expression_grade in ['EXCELLENT', 'GOOD'] else '개선 필요'}함"
+                expression_reason = f"문장 구성과 표현력이 {'뛰어남' if expression_grade == 'POSITIVE' else '개선 필요'}함"
                 
                 answer_evaluations.append(CoverLetterAnswerEvaluation(
                     evaluationCriteriaName="표현력 평가",
@@ -180,10 +184,10 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
             
             if answer_length > 2:
                 # 3. 적합성 평가 - 뒷부분 (66%-100%)
-                relevance_grade = random.choice(['EXCELLENT', 'GOOD', 'GOOD', 'NORMAL'])  # 적합성은 보통 긍정적
+                relevance_grade = random.choice(['POSITIVE', 'POSITIVE', 'POSITIVE', 'NEGATIVE'])  # 적합성은 보통 긍정적
                 relevance_start = max(1, (answer_length * 2) // 3)
                 relevance_evaluated = answer_content[relevance_start:]
-                relevance_reason = f"질문에 대한 적합성과 관련성이 {'높음' if relevance_grade in ['EXCELLENT', 'GOOD'] else '낮음'}함"
+                relevance_reason = f"질문에 대한 적합성과 관련성이 {'높음' if relevance_grade == 'POSITIVE' else '낮음'}함"
                 
                 answer_evaluations.append(CoverLetterAnswerEvaluation(
                     evaluationCriteriaName="적합성 평가",
@@ -194,7 +198,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
             
             # 4. 창의성 평가 (랜덤하게 추가) - 특정 키워드나 구문
             if random.choice([True, False]) and answer_length > 20:  # 50% 확률로 창의성 평가 추가
-                creativity_grade = random.choice(['GOOD', 'NORMAL', 'POOR'])
+                creativity_grade = random.choice(['POSITIVE', 'NEGATIVE', 'NEGATIVE'])
                 # 답변에서 특정 키워드나 구문 찾기
                 creativity_keywords = ['창의', '혁신', '새로운', '독창', '특별', '차별', '독특']
                 creativity_evaluated = None
@@ -213,7 +217,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
                     mid_end = (answer_length * 3) // 4
                     creativity_evaluated = answer_content[mid_start:mid_end]
                 
-                creativity_reason = f"창의적 사고와 독창성이 {'인상적' if creativity_grade in ['EXCELLENT', 'GOOD'] else '부족'}함"
+                creativity_reason = f"창의적 사고와 독창성이 {'인상적' if creativity_grade == 'POSITIVE' else '부족'}함"
                 
                 answer_evaluations.append(CoverLetterAnswerEvaluation(
                     evaluationCriteriaName="창의성 평가",
@@ -223,7 +227,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
                 ))
             
             # 요약 생성
-            summary = f"질문에 대한 {grade}적인 답변으로, {', '.join(keywords)} 관련 내용을 포함함"
+            summary = f"질문에 대한 {'긍정' if grade == 'POSITIVE' else '부정'}적인 답변으로, {', '.join(keywords)} 관련 내용을 포함함"
         
         cover_letter_evaluations.append(CoverLetterQuestionEvaluation(
                 coverLetterQuestionId=answer.get('coverLetterQuestionId', 0),
@@ -236,7 +240,7 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
     total_resume_score = sum(eval.score for eval in resume_evaluations)
     positive_count = sum(1 for eval in cover_letter_evaluations 
                         for answer_eval in eval.answerEvaluations 
-                        if answer_eval.grade in ['EXCELLENT', 'GOOD'])
+                        if answer_eval.grade == 'POSITIVE')
     
     if total_resume_score >= 25 and positive_count >= len(cover_letter_evaluations) // 2:
         overall_evaluation = "전반적으로 우수한 지원서입니다"
@@ -270,22 +274,23 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
         overallAnalysis=overall_analysis
     )
 
-def send_evaluation_result_to_spring_boot(evaluation_result: EvaluationResult):
+async def send_evaluation_result_to_spring_boot(evaluation_result: EvaluationResult):
     """
-    평가 결과를 Spring Boot로 전송
+    평가 결과를 Spring Boot로 전송 (비동기)
     """
     try:
         logger.info(f"평가 결과 전송 - 지원자: {evaluation_result.applicantName}")
         
-        import requests
+        import aiohttp
         spring_boot_url = "http://localhost:8080/api/applications/evaluation-result"
-        response = requests.post(spring_boot_url, json=evaluation_result.dict())
         
-        if response.status_code == 200:
-            logger.info(f"평가 결과 전송 완료 - 지원자: {evaluation_result.applicantName}")
-        else:
-            logger.error(f"평가 결과 전송 실패 - Status: {response.status_code}")
-            
+        async with aiohttp.ClientSession() as session:
+            async with session.post(spring_boot_url, json=evaluation_result.dict()) as response:
+                if response.status == 200:
+                    logger.info(f"평가 결과 전송 완료 - 지원자: {evaluation_result.applicantName}")
+                else:
+                    logger.error(f"평가 결과 전송 실패 - Status: {response.status}")
+                    
     except Exception as e:
         logger.error(f"평가 결과 전송 실패 - Error: {str(e)}")
 
@@ -385,7 +390,18 @@ async def submit_application(request: ApplicationSubmitRequest):
         
         # TEMP DATA 생성 및 전송
         evaluation_result = create_temp_evaluation_result(request)
-        send_evaluation_result_to_spring_boot(evaluation_result)
+        
+        # 생성된 평가 결과 로깅
+        logger.info(f"생성된 이력서 평가 결과 수: {len(evaluation_result.resumeEvaluations)}")
+        for resume_eval in evaluation_result.resumeEvaluations:
+            logger.info(f"  - {resume_eval.resumeItemName}: {resume_eval.score}점")
+        
+        logger.info(f"생성된 자기소개서 평가 결과 수: {len(evaluation_result.coverLetterQuestionEvaluations)}")
+        for cover_eval in evaluation_result.coverLetterQuestionEvaluations:
+            logger.info(f"  - 질문 {cover_eval.coverLetterQuestionId}: {len(cover_eval.answerEvaluations)}개 평가 기준")
+        
+        # 비동기로 평가 결과 전송
+        await send_evaluation_result_to_spring_boot(evaluation_result)
         
         end_time = time.time()
         processing_time = end_time - start_time
@@ -409,4 +425,11 @@ async def submit_application(request: ApplicationSubmitRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=False,
+        workers=1,
+        log_level="info"
+    )

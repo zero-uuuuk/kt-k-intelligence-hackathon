@@ -12,4 +12,5 @@ import java.util.List;
 @Repository
 public interface ResumeItemAnswerRepository extends JpaRepository<ResumeItemAnswer, Long> {
     List<ResumeItemAnswer> findByApplicationId(Long applicationId);
+    List<ResumeItemAnswer> findByApplicationIdAndResumeItemId(Long applicationId, Long resumeItemId);
 }

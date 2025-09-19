@@ -217,6 +217,15 @@ export const useCoverLetterQuestions = (applicationId: number | null) => {
   });
 };
 
+// 새로운 통합 API: 공고별 모든 데이터 조회 (지원서, 이력서, 자소서, 평가결과 포함)
+export const useJobPostingWithApplications = (jobPostingId: number) => {
+  return useQuery({
+    queryKey: ['jobPostingWithApplications', jobPostingId],
+    queryFn: () => applicationApi.getJobPostingWithApplications(jobPostingId),
+    enabled: !!jobPostingId,
+  });
+};
+
 // 유틸리티 훅들
 export const useApiUtils = () => {
   return apiUtils;

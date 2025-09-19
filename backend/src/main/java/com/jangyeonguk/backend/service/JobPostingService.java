@@ -232,6 +232,26 @@ public class JobPostingService {
     }
 
     /**
+     * 채용공고와 모든 지원서 데이터 조회 (통합 API)
+     */
+    public JobPostingResponseDto getJobPostingWithApplications(Long id) {
+        JobPosting jobPosting = jobPostingRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 채용공고입니다: " + id));
+
+        // LAZY 로딩된 applications를 명시적으로 로드
+        jobPosting.getApplications().size();
+        
+        // 각 application의 관련 데이터도 로드
+        jobPosting.getApplications().forEach(application -> {
+            application.getResumeItemAnswers().size();
+            application.getCoverLetterQuestionAnswers().size();
+            application.getApplicant().getName(); // applicant 정보 로드
+        });
+
+        return JobPostingResponseDto.fromWithApplications(jobPosting);
+    }
+
+    /**
      * 채용공고 수정
      */
     @Transactional
