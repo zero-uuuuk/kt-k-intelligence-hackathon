@@ -12,4 +12,5 @@ import java.util.List;
 @Repository
 public interface CoverLetterQuestionAnswerRepository extends JpaRepository<CoverLetterQuestionAnswer, Long> {
     List<CoverLetterQuestionAnswer> findByApplicationId(Long applicationId);
+    List<CoverLetterQuestionAnswer> findByApplicationIdAndCoverLetterQuestionId(Long applicationId, Long coverLetterQuestionId);
 }

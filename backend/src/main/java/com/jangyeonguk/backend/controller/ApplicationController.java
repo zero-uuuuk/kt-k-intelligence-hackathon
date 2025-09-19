@@ -3,6 +3,7 @@ package com.jangyeonguk.backend.controller;
 import com.jangyeonguk.backend.dto.application.ApplicationCreateRequestDto;
 import com.jangyeonguk.backend.dto.application.ApplicationResponseDto;
 import com.jangyeonguk.backend.dto.evaluation.EvaluationResultDto;
+import com.jangyeonguk.backend.dto.evaluation.EvaluationResultResponseDto;
 import com.jangyeonguk.backend.service.ApplicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -102,6 +103,20 @@ public class ApplicationController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
+
+    /**
+     * ApplicationId로 EvaluationResult 조회 (새로운 API)
+     */
+    @GetMapping("/{applicationId}/evaluation-result-detail")
+    public ResponseEntity<EvaluationResultResponseDto> getEvaluationResultByApplicationId(@PathVariable Long applicationId) {
+        try {
+            EvaluationResultResponseDto response = applicationService.getEvaluationResultByApplicationId(applicationId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(null);
         }
     }
 

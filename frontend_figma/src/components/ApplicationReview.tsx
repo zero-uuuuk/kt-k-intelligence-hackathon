@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search, FileText, ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp, Sun, Moon, User, Brain, Target, TrendingUp, AlertTriangle, CheckCircle, XCircle, Award, GraduationCap, ShieldCheck, Heart, Zap, BookOpen, Lightbulb, Eye, MessageSquare, Briefcase, Star } from "lucide-react";
-import { useJobPostingWithApplications, useEvaluationMutation, useApiUtils } from '../hooks/useApi';
+import { useJobPostingWithApplications, useEvaluationMutation, useApiUtils, useEvaluationResultByApplicationId } from '../hooks/useApi';
 import { ApplicationStatus } from '../services/api';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -123,7 +123,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       id: app.id.toString(),
       name: app.applicant.name,
       email: app.applicant.email,
-      score: app.evaluationResult?.totalScore || app.totalEvaluationScore || 0,
+      score: app.evaluationResult?.totalScore || 0,
       status: apiUtils.convertApplicationStatus(app.status),
       keywords: app.coverLetterQuestionAnswers.flatMap(q => q.keywords || []),
       questions: app.coverLetterQuestionAnswers.map(q => ({
@@ -159,6 +159,13 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     coverLetterQuestions: selectedApplicationData.coverLetterQuestionAnswers,
     totalQuestions: selectedApplicationData.coverLetterQuestionAnswers.length
   } : null;
+
+  // ApplicationId로 별도 evaluationResult 조회 (새로운 API 사용)
+  const { 
+    data: separateEvaluationResult, 
+    isLoading: separateEvaluationLoading, 
+    error: separateEvaluationError 
+  } = useEvaluationResultByApplicationId(selectedApplicationData?.id || 0);
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScoreDetails, setShowScoreDetails] = useState(false);
@@ -172,6 +179,16 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       console.error('공고 데이터 API 오류:', jobPostingError);
     }
   }, [jobPostingError]);
+
+  // 새로운 evaluationResult API 로깅
+  useEffect(() => {
+    if (separateEvaluationResult) {
+      console.log('새로운 API로 조회한 evaluationResult:', separateEvaluationResult);
+    }
+    if (separateEvaluationError) {
+      console.error('evaluationResult API 오류:', separateEvaluationError);
+    }
+  }, [separateEvaluationResult, separateEvaluationError]);
 
   // 지원자 데이터가 변경되면 선택된 지원자 업데이트
   useEffect(() => {
@@ -308,7 +325,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
     // 이력서 항목 데이터 (실제 지원자 응답과 평가 결과)
     const resumeItemsWithDetails = selectedApplicationData.resumeItemAnswers.map(answer => {
-      return {
+    return {
         name: answer.resumeItemName || '알 수 없는 항목',
         score: answer.resumeScore || 0,
         maxScore: answer.maxScore || 10,
@@ -330,16 +347,20 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     };
   };
 
-   // 평가기준 별 내용분석 데이터 - coverLetterQuestionsData에서 가져오기
+   // 평가기준 별 내용분석 데이터 - 새로운 API 데이터 사용
    const getEssayAnalysis = (applicantName: string, questionNumber: number) => {
-     // coverLetterQuestionsData에서 평가 결과 데이터 사용
-     if (coverLetterQuestionsData && coverLetterQuestionsData.coverLetterQuestions.length > 0) {
+     // 새로운 API에서 가져온 evaluationResult 사용
+     if (separateEvaluationResult && separateEvaluationResult.coverLetterScores) {
        try {
+         // coverLetterScores JSON 파싱
+         const coverLetterScores = typeof separateEvaluationResult.coverLetterScores === 'string' 
+           ? JSON.parse(separateEvaluationResult.coverLetterScores) 
+           : separateEvaluationResult.coverLetterScores;
+         
          // 현재 질문 번호에 해당하는 데이터 찾기
-         const currentQuestionData = coverLetterQuestionsData.coverLetterQuestions.find((question: any) => 
-           question.coverLetterQuestionId === questionNumber || 
-           coverLetterQuestionsData.coverLetterQuestions.indexOf(question) + 1 === questionNumber
-         );
+         const currentQuestionData = coverLetterScores[`question${questionNumber}`] || 
+                                   coverLetterScores[questionNumber] ||
+                                   Object.values(coverLetterScores)[questionNumber - 1];
          
          if (currentQuestionData) {
            const evaluationCriteria: { [key: string]: { 
@@ -386,26 +407,21 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
              });
            }
            
-           
-
-           
-        return {
+           return {
              keyPoints,
              evaluationCriteria,
-          suggestions: [
-
-          ]
-        };
+             suggestions: []
+           };
          }
        } catch (error) {
-         console.error('coverLetterQuestionsData 파싱 오류:', error);
-      }
-    }
-    
+         console.error('coverLetterScores 파싱 오류:', error);
+       }
+     }
+     
      // 기본값 (데이터가 없는 경우)
-      return {
+     return {
        keyPoints: [],
-        evaluationCriteria: {
+       evaluationCriteria: {
          '기본 평가': { 
            criteria: '기본 평가',
            reason: '평가 데이터를 불러오는 중입니다.',
@@ -418,10 +434,10 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
      };
    };
 
-  // AI 분석 데이터 - 새로운 통합 데이터 구조 사용
+  // AI 분석 데이터 - 새로운 API 데이터 사용
   const getAIAnalysis = (applicantName: string) => {
     // 로딩 중인 경우
-    if (jobPostingLoading) {
+    if (jobPostingLoading || separateEvaluationLoading) {
       return {
         overallAssessment: '평가 데이터를 불러오는 중입니다.',
         strengths: ['데이터를 불러오는 중입니다.'],
@@ -433,7 +449,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     }
 
     // 오류가 있는 경우
-    if (jobPostingError) {
+    if (jobPostingError || separateEvaluationError) {
       return {
         overallAssessment: '평가 데이터를 불러오는 중 오류가 발생했습니다.',
         strengths: ['오류로 인해 데이터를 불러올 수 없습니다.'],
@@ -444,16 +460,16 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       };
     }
 
-    // evaluationResult에서 실제 데이터 사용
-    if (evaluationResult) {
+    // 새로운 API에서 가져온 evaluationResult 사용
+    if (separateEvaluationResult) {
       // overallEvaluation이 있는 경우
-      if (evaluationResult.overallEvaluation) {
+      if (separateEvaluationResult.overallEvaluation) {
         try {
-          const overallEval = typeof evaluationResult.overallEvaluation === 'string' 
-            ? JSON.parse(evaluationResult.overallEvaluation) 
-            : evaluationResult.overallEvaluation;
+          const overallEval = typeof separateEvaluationResult.overallEvaluation === 'string' 
+            ? JSON.parse(separateEvaluationResult.overallEvaluation) 
+            : separateEvaluationResult.overallEvaluation;
           
-    return {
+          return {
             overallAssessment: overallEval.overallEvaluation || '종합 평가를 진행 중입니다.',
             strengths: overallEval.strengths && overallEval.strengths.length > 0 
               ? overallEval.strengths 
@@ -461,7 +477,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
             weaknesses: overallEval.improvements && overallEval.improvements.length > 0 
               ? overallEval.improvements 
               : ['개선점 분석을 진행 중입니다.'],
-      keyInsights: [
+            keyInsights: [
               'AI 분석을 통한 종합적인 평가 결과',
               '이력서와 자기소개서를 종합한 역량 분석',
               '지원자별 맞춤형 평가 기준 적용'
@@ -517,12 +533,94 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
           charCount: question.charCount,
           keywords: question.keywords
         });
+        // 키워드 처리 - 새로운 API에서 keywords 가져오기
+        let keywords = [];
+        
+        // 새로운 API에서 keywords 가져오기
+        if (separateEvaluationResult && separateEvaluationResult.coverLetterScores) {
+          try {
+            const coverLetterScores = typeof separateEvaluationResult.coverLetterScores === 'string' 
+              ? JSON.parse(separateEvaluationResult.coverLetterScores) 
+              : separateEvaluationResult.coverLetterScores;
+            
+            const currentQuestionData = coverLetterScores[`question${questionNumber}`] || 
+                                      coverLetterScores[questionNumber] ||
+                                      Object.values(coverLetterScores)[questionNumber - 1];
+            
+            if (currentQuestionData && currentQuestionData.keywords) {
+              keywords = currentQuestionData.keywords.map((keyword: string) => 
+                keyword.startsWith('#') ? keyword : `#${keyword}`
+              );
+            }
+          } catch (error) {
+            console.error('coverLetterScores에서 keywords 가져오기 실패:', error);
+          }
+        }
+        
+        // 새로운 API에서 키워드를 가져오지 못한 경우 기존 방식 사용
+        if (!keywords || keywords.length === 0) {
+          if (question.answerKeywords) {
+            try {
+              // JSON 문자열인 경우 파싱
+              const rawKeywords = typeof question.answerKeywords === 'string' 
+                ? JSON.parse(question.answerKeywords) 
+                : question.answerKeywords;
+              keywords = rawKeywords.map((keyword: string) => 
+                keyword.startsWith('#') ? keyword : `#${keyword}`
+              );
+            } catch (e) {
+              // 파싱 실패시 문자열을 배열로 변환
+              const rawKeyword = question.answerKeywords;
+              keywords = [rawKeyword.startsWith('#') ? rawKeyword : `#${rawKeyword}`];
+            }
+          }
+          
+          // 키워드가 null이거나 비어있으면 기본 키워드 생성
+          if (!keywords || keywords.length === 0) {
+            // 답변 내용에서 키워드 추출 또는 기본 키워드 생성
+            const answerContent = question.answerContent || '';
+            if (answerContent.includes('백엔드') || answerContent.includes('Backend')) {
+              keywords = ['#백엔드', '#개발', '#기술'];
+            } else if (answerContent.includes('AI') || answerContent.includes('인공지능')) {
+              keywords = ['#AI', '#인공지능', '#기술'];
+            } else if (answerContent.includes('협업') || answerContent.includes('팀')) {
+              keywords = ['#협업', '#팀워크', '#소통'];
+            } else if (answerContent.includes('프론트엔드') || answerContent.includes('Frontend')) {
+              keywords = ['#프론트엔드', '#UI/UX', '#개발'];
+            } else {
+              keywords = ['#지원동기', '#경험', '#목표'];
+            }
+          }
+        }
+
+        // 요약 처리 - 새로운 API에서 coverLetterScores.summary 사용
+        let summary = question.answerSummary || '';
+        
+        // 새로운 API에서 summary 가져오기
+        if (separateEvaluationResult && separateEvaluationResult.coverLetterScores) {
+          try {
+            const coverLetterScores = typeof separateEvaluationResult.coverLetterScores === 'string' 
+              ? JSON.parse(separateEvaluationResult.coverLetterScores) 
+              : separateEvaluationResult.coverLetterScores;
+            
+            const currentQuestionData = coverLetterScores[`question${questionNumber}`] || 
+                                      coverLetterScores[questionNumber] ||
+                                      Object.values(coverLetterScores)[questionNumber - 1];
+            
+            if (currentQuestionData && currentQuestionData.summary) {
+              summary = currentQuestionData.summary;
+            }
+          } catch (error) {
+            console.error('coverLetterScores에서 summary 가져오기 실패:', error);
+          }
+        }
+
         result[questionNumber] = {
           question: question.questionContent,
           charCount: question.charCount,
           answer: question.answerContent,
-          tags: question.keywords || [],
-          summary: question.summary || '',
+          tags: keywords,
+          summary: summary,
           coverLetterQuestionId: question.id,
           answerEvaluations: question.qualitativeEvaluation ? 
             (typeof question.qualitativeEvaluation === 'string' 
@@ -540,11 +638,11 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   const currentApplicantData = useMemo(() => {
     return getApplicantData(selectedApplicant);
-  }, [selectedApplicant, coverLetterQuestionsData]);
+  }, [selectedApplicant, coverLetterQuestionsData, separateEvaluationResult]);
   
   const currentQuestionData = useMemo(() => {
     return currentApplicantData[currentQuestion as keyof typeof currentApplicantData];
-  }, [currentApplicantData, currentQuestion]);
+  }, [currentApplicantData, currentQuestion, separateEvaluationResult]);
 
   const detailedScores = useMemo(() => {
     return getDetailedScores();
@@ -564,11 +662,11 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   const aiAnalysis = useMemo(() => {
     return getAIAnalysis(selectedApplicant);
-  }, [selectedApplicant, evaluationResult, jobPostingLoading, jobPostingError]);
+  }, [selectedApplicant, separateEvaluationResult, jobPostingLoading, jobPostingError, separateEvaluationLoading, separateEvaluationError]);
 
   const essayAnalysis = useMemo(() => {
     return getEssayAnalysis(selectedApplicant, currentQuestion);
-  }, [selectedApplicant, currentQuestion]);
+  }, [selectedApplicant, currentQuestion, separateEvaluationResult]);
 
   // 문항 네비게이션 핸들러
   const handleNextQuestion = () => {
@@ -595,12 +693,41 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     }
   };
 
-  // 특정 문장을 하이라이트하는 함수 - 실제 평가 결과 사용 (겹치는 부분도 개별 처리)
+  // 특정 문장을 하이라이트하는 함수 - 새로운 API 데이터 사용
   const renderAnswerWithHighlights = (answer: string) => {
     console.log('renderAnswerWithHighlights called with answer:', answer);
-    console.log('currentQuestionData?.answerEvaluations:', currentQuestionData?.answerEvaluations);
+    console.log('separateEvaluationResult:', separateEvaluationResult);
+    console.log('currentQuestion:', currentQuestion);
     
-    if (!currentQuestionData?.answerEvaluations || currentQuestionData.answerEvaluations.length === 0) {
+    // 새로운 API에서 answerEvaluations 가져오기
+    let answerEvaluations = currentQuestionData?.answerEvaluations || [];
+    
+    if (separateEvaluationResult && separateEvaluationResult.coverLetterScores) {
+      try {
+        const coverLetterScores = typeof separateEvaluationResult.coverLetterScores === 'string' 
+          ? JSON.parse(separateEvaluationResult.coverLetterScores) 
+          : separateEvaluationResult.coverLetterScores;
+        
+        console.log('coverLetterScores:', coverLetterScores);
+        
+        const currentQuestionData = coverLetterScores[`question${currentQuestion}`] || 
+                                  coverLetterScores[currentQuestion] ||
+                                  Object.values(coverLetterScores)[currentQuestion - 1];
+        
+        console.log('currentQuestionData from API:', currentQuestionData);
+        
+        if (currentQuestionData && currentQuestionData.answerEvaluations) {
+          answerEvaluations = currentQuestionData.answerEvaluations;
+          console.log('Using API answerEvaluations:', answerEvaluations);
+        }
+      } catch (error) {
+        console.error('coverLetterScores에서 answerEvaluations 가져오기 실패:', error);
+      }
+    }
+    
+    console.log('Final answerEvaluations:', answerEvaluations);
+    
+    if (!answerEvaluations || answerEvaluations.length === 0) {
       console.log('No answerEvaluations found, returning plain text');
       return <span>{answer}</span>;
     }
@@ -614,7 +741,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       id: string; // 고유 식별자 추가
     }> = [];
     
-    currentQuestionData.answerEvaluations.forEach((evaluation: any, evalIndex: number) => {
+    answerEvaluations.forEach((evaluation: any, evalIndex: number) => {
       const evaluatedContent = evaluation.evaluatedContent;
       const evaluationCriteriaName = evaluation.evaluationCriteriaName;
       console.log(`Evaluation ${evalIndex + 1}:`, {
@@ -1138,14 +1265,14 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           {/* 이력서 항목들 - 2열 레이아웃 */}
                           {detailedScores.resumeItems.length > 0 && (
                             <div className="grid grid-cols-2 gap-4">
-                              {detailedScores.resumeItems.map((item, index) => (
+                                {detailedScores.resumeItems.map((item, index) => (
                                 <div key={index} className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
-                                  <span className={`text-sm font-medium ${getScoreColor(item.score)}`}>
-                                    {item.score}/{item.maxScore}점
-                                  </span>
-                                </div>
-                              ))}
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
+                                      <span className={`text-sm font-medium ${getScoreColor(item.score)}`}>
+                                        {item.score}/{item.maxScore}점
+                              </span>
+                            </div>
+                                ))}
                             </div>
                           )}
                           
@@ -1271,7 +1398,10 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                 문항 {currentQuestion} / {coverLetterQuestionsData?.totalQuestions || 2}
                               </h3>
                               <div className="text-sm text-gray-600 dark:text-muted-foreground">
-                                {currentQuestionData?.charCount}
+                                {currentQuestionData?.answer ? currentQuestionData.answer.length : 0}자 / {selectedApplicationData?.coverLetterQuestionAnswers.find((q: any) => 
+                                  q.coverLetterQuestionId === currentQuestion || 
+                                  selectedApplicationData.coverLetterQuestionAnswers.indexOf(q) + 1 === currentQuestion
+                                )?.maxCharacters || 500}자
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1304,12 +1434,27 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           </div>
 
 
+                          {/* 키워드 표시 */}
+                          {currentQuestionData?.tags && currentQuestionData.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {currentQuestionData.tags.map((tag: string, index: number) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           {/* 자기소개서 내용 */}
                           <div className="bg-gray-50 dark:bg-muted rounded-lg p-4">
                             <div className="text-sm leading-relaxed text-gray-900 dark:text-foreground whitespace-pre-wrap">
                               {renderAnswerWithHighlights(currentQuestionData?.answer || '')}
                             </div>
                           </div>
+
 
                           {/* 요약 */}
                           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">

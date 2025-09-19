@@ -226,6 +226,15 @@ export const useJobPostingWithApplications = (jobPostingId: number) => {
   });
 };
 
+// ApplicationId로 evaluationResult 조회
+export const useEvaluationResultByApplicationId = (applicationId: number) => {
+  return useQuery({
+    queryKey: ['evaluationResult', applicationId],
+    queryFn: () => applicationApi.getEvaluationResultByApplicationId(applicationId),
+    enabled: !!applicationId,
+  });
+};
+
 // 유틸리티 훅들
 export const useApiUtils = () => {
   return apiUtils;

@@ -226,8 +226,13 @@ def create_temp_evaluation_result(request: ApplicationSubmitRequest) -> Evaluati
                     evaluationReason=creativity_reason
                 ))
             
-            # 요약 생성
-            summary = f"질문에 대한 {'긍정' if grade == 'POSITIVE' else '부정'}적인 답변으로, {', '.join(keywords)} 관련 내용을 포함함"
+            # 요약 생성 - 더 상세한 요약
+            if len(answer_content) > 50:
+                # 답변이 긴 경우 앞부분을 요약으로 사용
+                summary = f"지원자는 {', '.join(keywords)} 관련 경험과 역량을 바탕으로 구체적인 답변을 제시했습니다. {answer_content[:100]}..."
+            else:
+                # 답변이 짧은 경우 전체 내용을 요약으로 사용
+                summary = f"지원자는 {', '.join(keywords)} 관련 내용을 포함한 답변을 제시했습니다. {answer_content}"
         
         cover_letter_evaluations.append(CoverLetterQuestionEvaluation(
                 coverLetterQuestionId=answer.get('coverLetterQuestionId', 0),

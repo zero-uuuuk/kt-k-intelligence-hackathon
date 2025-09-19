@@ -461,6 +461,12 @@ export const applicationApi = {
   getJobPostingWithApplications: async (jobPostingId: number): Promise<any> => {
     const response = await api.get(`/job-postings/${jobPostingId}/with-applications`);
     return response.data;
+  },
+
+  // ApplicationId로 evaluationResult 조회
+  getEvaluationResultByApplicationId: async (applicationId: number): Promise<any> => {
+    const response = await api.get(`/applications/${applicationId}/evaluation-result-detail`);
+    return response.data;
   }
 };
 

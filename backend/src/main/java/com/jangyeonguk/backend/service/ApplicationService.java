@@ -14,6 +14,7 @@ import com.jangyeonguk.backend.domain.resume.ResumeItemCriterion;
 import com.jangyeonguk.backend.dto.application.ApplicationCreateRequestDto;
 import com.jangyeonguk.backend.dto.application.ApplicationResponseDto;
 import com.jangyeonguk.backend.dto.evaluation.EvaluationResultDto;
+import com.jangyeonguk.backend.dto.evaluation.EvaluationResultResponseDto;
 import com.jangyeonguk.backend.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -189,6 +190,19 @@ public class ApplicationService {
                     .collect(Collectors.toList()));
         }
 
+        // 생성된 데이터 로깅
+        try {
+            String jsonData = objectMapper.writeValueAsString(data);
+            log.info("=== FASTAPI로 보낼 지원서 데이터 ===");
+            log.info("Application ID: {}", application.getId());
+            log.info("Applicant: {} ({})", application.getApplicant().getName(), application.getApplicant().getEmail());
+            log.info("Job Posting ID: {}", application.getJobPosting().getId());
+            log.info("JSON Data: {}", jsonData);
+            log.info("=== FASTAPI 데이터 끝 ===");
+        } catch (Exception e) {
+            log.error("FASTAPI 데이터 로깅 실패: {}", e.getMessage());
+        }
+
         return data;
     }
 
@@ -317,6 +331,12 @@ public class ApplicationService {
 
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
 
+            // 응답 데이터 로깅
+            log.info("=== FASTAPI 응답 데이터 ===");
+            log.info("Status Code: {}", response.getStatusCode());
+            log.info("Response Body: {}", response.getBody());
+            log.info("=== FASTAPI 응답 끝 ===");
+
             if (response.getStatusCode() == HttpStatus.OK) {
                 return response.getBody();
             } else {
@@ -337,6 +357,21 @@ public class ApplicationService {
         try {
             log.info("평가 결과 처리 시작 - 지원자: {}, 공고 ID: {}",
                     evaluationResult.getApplicantName(), evaluationResult.getJobPostingId());
+
+            // 받은 평가 결과 데이터 로깅
+            try {
+                String evaluationJson = objectMapper.writeValueAsString(evaluationResult);
+                log.info("=== FASTAPI에서 받은 평가 결과 데이터 ===");
+                log.info("Applicant: {} ({})", evaluationResult.getApplicantName(), evaluationResult.getApplicantEmail());
+                log.info("Application ID: {}", evaluationResult.getApplicationId());
+                log.info("Job Posting ID: {}", evaluationResult.getJobPostingId());
+                log.info("Resume Evaluations Count: {}", evaluationResult.getResumeEvaluations() != null ? evaluationResult.getResumeEvaluations().size() : 0);
+                log.info("Cover Letter Evaluations Count: {}", evaluationResult.getCoverLetterQuestionEvaluations() != null ? evaluationResult.getCoverLetterQuestionEvaluations().size() : 0);
+                log.info("JSON Data: {}", evaluationJson);
+                log.info("=== 평가 결과 데이터 끝 ===");
+            } catch (Exception e) {
+                log.error("평가 결과 데이터 로깅 실패: {}", e.getMessage());
+            }
 
             // 지원서 조회
             Applicant applicant = applicantRepository.findAllByEmail(evaluationResult.getApplicantEmail()).stream().findFirst()
@@ -388,6 +423,49 @@ public class ApplicationService {
                         
                         log.info("ResumeItemAnswer 점수 저장 - Application ID: {}, ResumeItem ID: {}, Score: {}", 
                                 application.getId(), resumeEval.getResumeItemId(), resumeEval.getScore());
+                    }
+                }
+            }
+
+            // CoverLetterQuestionAnswer에 평가 결과 저장
+            if (evaluationResult.getCoverLetterQuestionEvaluations() != null) {
+                for (EvaluationResultDto.CoverLetterQuestionEvaluationDto coverEval : evaluationResult.getCoverLetterQuestionEvaluations()) {
+                    // CoverLetterQuestionAnswer 조회 및 업데이트
+                    List<CoverLetterQuestionAnswer> coverAnswers = coverLetterQuestionAnswerRepository.findByApplicationIdAndCoverLetterQuestionId(
+                            application.getId(), coverEval.getCoverLetterQuestionId());
+                    
+                    if (!coverAnswers.isEmpty()) {
+                        CoverLetterQuestionAnswer coverAnswer = coverAnswers.get(0);
+                        
+                        // 요약 저장
+                        if (coverEval.getSummary() != null) {
+                            coverAnswer.setAnswerSummary(coverEval.getSummary());
+                        }
+                        
+                        // 키워드 저장 (JSON 형태로)
+                        if (coverEval.getKeywords() != null && !coverEval.getKeywords().isEmpty()) {
+                            try {
+                                String keywordsJson = objectMapper.writeValueAsString(coverEval.getKeywords());
+                                coverAnswer.setAnswerKeywords(keywordsJson);
+                            } catch (Exception e) {
+                                log.error("키워드 JSON 변환 실패: {}", e.getMessage());
+                            }
+                        }
+                        
+                        // 정성 평가 저장 (JSON 형태로)
+                        if (coverEval.getAnswerEvaluations() != null && !coverEval.getAnswerEvaluations().isEmpty()) {
+                            try {
+                                String evaluationsJson = objectMapper.writeValueAsString(coverEval.getAnswerEvaluations());
+                                coverAnswer.setAnswerQualitativeEvaluation(evaluationsJson);
+                            } catch (Exception e) {
+                                log.error("정성 평가 JSON 변환 실패: {}", e.getMessage());
+                            }
+                        }
+                        
+                        coverLetterQuestionAnswerRepository.save(coverAnswer);
+                        
+                        log.info("CoverLetterQuestionAnswer 평가 결과 저장 - Application ID: {}, Question ID: {}, Summary: {}", 
+                                application.getId(), coverEval.getCoverLetterQuestionId(), coverEval.getSummary());
                     }
                 }
             }
@@ -1013,6 +1091,35 @@ public class ApplicationService {
             log.error("지원서 평가 결과 조회 실패 - Application ID: {}, Error: {}", 
                     applicationId, e.getMessage(), e);
             throw new RuntimeException("지원서 평가 결과 조회에 실패했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * ApplicationId로 EvaluationResult 조회
+     */
+    public EvaluationResultResponseDto getEvaluationResultByApplicationId(Long applicationId) {
+        try {
+            log.info("ApplicationId로 EvaluationResult 조회 시작 - Application ID: {}", applicationId);
+            
+            // ApplicationId로 EvaluationResult 조회
+            Optional<EvaluationResult> evaluationResultOpt = evaluationResultRepository.findByApplicationId(applicationId);
+            
+            if (evaluationResultOpt.isEmpty()) {
+                log.warn("EvaluationResult를 찾을 수 없음 - Application ID: {}", applicationId);
+                throw new IllegalArgumentException("해당 지원서의 평가 결과를 찾을 수 없습니다: " + applicationId);
+            }
+            
+            EvaluationResult evaluationResult = evaluationResultOpt.get();
+            log.info("EvaluationResult 조회 성공 - Application ID: {}, EvaluationResult ID: {}", 
+                    applicationId, evaluationResult.getId());
+            
+            // DTO로 변환하여 반환
+            return EvaluationResultResponseDto.from(evaluationResult);
+            
+        } catch (Exception e) {
+            log.error("ApplicationId로 EvaluationResult 조회 실패 - Application ID: {}, Error: {}", 
+                    applicationId, e.getMessage(), e);
+            throw new RuntimeException("평가 결과 조회에 실패했습니다: " + e.getMessage(), e);
         }
     }
 
