@@ -1,5 +1,6 @@
 package com.jangyeonguk.backend.service;
 
+import com.jangyeonguk.backend.domain.application.Application;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestion;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionCriterion;
 import com.jangyeonguk.backend.domain.coverletter.CoverLetterQuestionCriterionDetail;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class JobPostingService {
 
     private final JobPostingRepository jobPostingRepository;
+    private final ApplicationRepository applicationRepository;
     private final ResumeItemRepository resumeItemRepository;
     private final ResumeItemCriterionRepository resumeItemCriterionRepository;
     private final CoverLetterQuestionRepository coverLetterQuestionRepository;
@@ -234,6 +236,7 @@ public class JobPostingService {
     /**
      * 채용공고와 모든 지원서 데이터 조회 (통합 API)
      */
+    @Transactional
     public JobPostingResponseDto getJobPostingWithApplications(Long id) {
         JobPosting jobPosting = jobPostingRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 채용공고입니다: " + id));
@@ -241,14 +244,45 @@ public class JobPostingService {
         // LAZY 로딩된 applications를 명시적으로 로드
         jobPosting.getApplications().size();
         
-        // 각 application의 관련 데이터도 로드
+        // 각 application의 관련 데이터도 로드하고 resumeQuantitativeScore 계산 및 저장
         jobPosting.getApplications().forEach(application -> {
             application.getResumeItemAnswers().size();
             application.getCoverLetterQuestionAnswers().size();
             application.getApplicant().getName(); // applicant 정보 로드
+            
+            // resumeQuantitativeScore 계산 및 저장
+            calculateAndSaveResumeQuantitativeScore(application);
         });
 
         return JobPostingResponseDto.fromWithApplications(jobPosting);
+    }
+    
+    /**
+     * 지원서의 resumeQuantitativeScore 계산 및 저장
+     */
+    private void calculateAndSaveResumeQuantitativeScore(Application application) {
+        try {
+            // resumeItemAnswers의 resumeScore 합계 계산
+            int totalResumeScore = application.getResumeItemAnswers().stream()
+                    .mapToInt(answer -> answer.getResumeScore() != null ? answer.getResumeScore() : 0)
+                    .sum();
+            
+            // 기존 값과 다르면 업데이트
+            if (application.getResumeQuantitativeScore() == null || 
+                !application.getResumeQuantitativeScore().equals(totalResumeScore)) {
+                
+                application.setResumeQuantitativeScore(totalResumeScore);
+                applicationRepository.save(application);
+                
+                log.info("resumeQuantitativeScore 업데이트 - Application ID: {}, 지원자: {}, 점수: {}점", 
+                        application.getId(), 
+                        application.getApplicant().getName(), 
+                        totalResumeScore);
+            }
+        } catch (Exception e) {
+            log.error("resumeQuantitativeScore 계산 실패 - Application ID: {}, Error: {}", 
+                    application.getId(), e.getMessage(), e);
+        }
     }
 
     /**

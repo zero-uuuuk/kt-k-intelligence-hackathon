@@ -123,7 +123,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       id: app.id.toString(),
       name: app.applicant.name,
       email: app.applicant.email,
-      score: app.evaluationResult?.totalScore || 0,
+      score: app.resumeQuantitativeScore || app.evaluationResult?.totalScore || 0,
       status: apiUtils.convertApplicationStatus(app.status),
       keywords: app.coverLetterQuestionAnswers.flatMap(q => q.keywords || []),
       questions: app.coverLetterQuestionAnswers.map(q => ({
@@ -1087,8 +1087,8 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
                               <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
-                              {application.evaluationResult?.totalScore || 0}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0)}`}>
+                              {application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -1117,8 +1117,8 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
                               <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
-                              {application.evaluationResult?.totalScore || 0}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0)}`}>
+                              {application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -1147,8 +1147,8 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
                               <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
-                              {application.evaluationResult?.totalScore || 0}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0)}`}>
+                              {application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -1177,8 +1177,8 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
                               <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
-                              {application.evaluationResult?.totalScore || 0}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0)}`}>
+                              {application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
@@ -1207,8 +1207,8 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(application.status)}`} />
                               <span className="font-medium text-foreground">{application.applicant.name}</span>
                             </div>
-                            <span className={`text-sm font-medium ${getScoreColor(application.evaluationResult?.totalScore || 0)}`}>
-                              {application.evaluationResult?.totalScore || 0}점
+                            <span className={`text-sm font-medium ${getScoreColor(application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0)}`}>
+                              {application.resumeQuantitativeScore || application.evaluationResult?.totalScore || 0}점
                             </span>
                           </div>
                         ))}
