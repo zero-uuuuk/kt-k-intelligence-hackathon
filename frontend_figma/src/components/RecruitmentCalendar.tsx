@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { getKoreanDate } from "../utils/dateUtils";
 import {
@@ -14,7 +14,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
   evaluationDeadline?: string; // 평가 마감일 추가
 }
 
@@ -22,7 +22,7 @@ interface RecruitmentPeriod {
   start: Date;
   end: Date;
   title: string;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
   color: string;
   evaluationDeadline?: Date; // 평가 마감일 추가
 }
@@ -35,8 +35,10 @@ export function RecruitmentCalendar({ workspaceData = [] }: RecruitmentCalendarP
   const today = getKoreanDate();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
-  // 워크스페이스 데이터에서 모집 기간 추출
-  const recruitmentPeriods: RecruitmentPeriod[] = workspaceData.map((workspace, index) => {
+  // 워크스페이스 데이터에서 모집 기간 추출 (평가완료 제외)
+  const recruitmentPeriods: RecruitmentPeriod[] = workspaceData
+    .filter(workspace => workspace.status !== "evaluation-completed") // 평가완료 제외
+    .map((workspace, index) => {
     const [startDateStr, endDateStr] = workspace.period.split(' - ');
     
     // 날짜 문자열 파싱 (25.09.01 형태)
@@ -93,7 +95,7 @@ export function RecruitmentCalendar({ workspaceData = [] }: RecruitmentCalendarP
   };
 
   // 상태별 CSS 클래스 매핑 (통일된 색상 팔레트 + 그라데이션 바)
-  const getStatusColorClasses = (status: "recruiting" | "scheduled" | "completed") => {
+  const getStatusColorClasses = (status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed") => {
     const statusColorMap: { [key: string]: { bg: string, text: string, border: string, line: string, cardBg: string, gradient: string } } = {
       recruiting: { 
         bg: 'bg-green-50', 
@@ -111,7 +113,15 @@ export function RecruitmentCalendar({ workspaceData = [] }: RecruitmentCalendarP
         cardBg: 'bg-yellow-50',
         gradient: 'from-yellow-400 to-yellow-600'
       },
-      completed: { 
+      'recruitment-completed': { 
+        bg: 'bg-blue-50', 
+        text: 'text-blue-700', 
+        border: 'border-blue-200', 
+        line: 'bg-gradient-to-r from-blue-400 to-blue-600',
+        cardBg: 'bg-blue-50',
+        gradient: 'from-blue-400 to-blue-600'
+      },
+      'evaluation-completed': { 
         bg: 'bg-gray-50', 
         text: 'text-gray-700', 
         border: 'border-gray-200', 
@@ -209,8 +219,8 @@ export function RecruitmentCalendar({ workspaceData = [] }: RecruitmentCalendarP
           <div className="flex items-center gap-4 flex-wrap">
             {recruitmentPeriods
               .sort((a, b) => {
-                // 모집중 → 모집예정 → 완료 순으로 정렬
-                const statusOrder = { 'recruiting': 0, 'scheduled': 1, 'completed': 2 };
+                // 모집중 → 모집예정 → 모집완료 → 평가완료 순으로 정렬
+                const statusOrder = { 'recruiting': 0, 'scheduled': 1, 'recruitment-completed': 2, 'evaluation-completed': 3 };
                 return statusOrder[a.status] - statusOrder[b.status];
               })
               .map((period, index) => {
@@ -373,8 +383,8 @@ export function RecruitmentCalendar({ workspaceData = [] }: RecruitmentCalendarP
             ) : (
               recruitmentPeriods
                 .sort((a, b) => {
-                  // 모집중 → 모집예정 → 완료 순으로 정렬
-                  const statusOrder = { 'recruiting': 0, 'scheduled': 1, 'completed': 2 };
+                  // 모집중 → 모집예정 → 모집완료 → 평가완료 순으로 정렬
+                  const statusOrder = { 'recruiting': 0, 'scheduled': 1, 'recruitment-completed': 2, 'evaluation-completed': 3 };
                   return statusOrder[a.status] - statusOrder[b.status];
                 })
                 .map((period, index) => {

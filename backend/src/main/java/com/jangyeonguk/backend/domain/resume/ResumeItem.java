@@ -44,3 +44,4 @@ public class ResumeItem {
     @Builder.Default
     private List<ResumeItemCriterion> criteria = new ArrayList<>();
 }
+

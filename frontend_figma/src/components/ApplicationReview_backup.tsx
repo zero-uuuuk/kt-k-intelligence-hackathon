@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search, FileText, ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp, Sun, Moon, User, Brain, Target, TrendingUp, AlertTriangle, CheckCircle, XCircle, Award, GraduationCap, ShieldCheck, Heart, Zap, BookOpen, Lightbulb, Eye, MessageSquare, Briefcase, Star } from "lucide-react";
-import { useApplicationsByJobPosting, useEvaluationMutation, useApiUtils, useJobPostings, useApplicationEvaluationResult, useCoverLetterQuestions } from '../hooks/useApi';
+import { useApplicationsByJobPosting, useEvaluationMutation, useApiUtils, useJobPostings, useApplicationEvaluationResult } from '../hooks/useApi';
 import { ApplicationResponseDto, ApplicationStatus } from '../services/api';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -77,26 +77,15 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   // 선택된 지원자의 평가 결과 가져오기
   const selectedApplicantForEvaluation = applicants.find(app => app.name === selectedApplicant);
-  const applicationId = selectedApplicantForEvaluation?.id ? parseInt(selectedApplicantForEvaluation.id) : null;
-  
-  const { data: evaluationResult, isLoading: evaluationLoading, error: evaluationError } = useApplicationEvaluationResult(applicationId);
-  const { data: coverLetterQuestionsData, isLoading: coverLetterLoading, error: coverLetterError } = useCoverLetterQuestions(applicationId);
+  const { data: evaluationResult, isLoading: evaluationLoading } = useApplicationEvaluationResult(
+    selectedApplicantForEvaluation?.id ? parseInt(selectedApplicantForEvaluation.id) : null
+  );
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScoreDetails, setShowScoreDetails] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showWarningDialog, setShowWarningDialog] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'essay' | 'ai'>('info');
-
-  // API 오류 로깅
-  useEffect(() => {
-    if (evaluationError) {
-      console.error('평가 결과 API 오류:', evaluationError);
-    }
-    if (coverLetterError) {
-      console.error('자기소개서 질문 API 오류:', coverLetterError);
-    }
-  }, [evaluationError, coverLetterError]);
 
   // 지원자 데이터가 변경되면 선택된 지원자 업데이트
   useEffect(() => {
@@ -153,7 +142,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
   };
 
   const selectedApplicantData = useMemo(() => {
-    return applicants.find(a => a.name === selectedApplicant) || applicants[0];
+    return applicants.find(a => a.name === selectedApplicant) || applicants[0]; // 김지원을 기본값으로
   }, [selectedApplicant, applicants]);
 
   // 평가자 액션 핸들러
@@ -170,35 +159,21 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     const applicant = applicants.find(a => a.name === selectedApplicant);
     if (applicant) {
       try {
-        console.log(`평가 상태 변경 시작: ${applicant.name} -> ${status}`);
-        
-        // 프론트엔드 상태를 백엔드 상태로 변환
-        const backendStatus = status === 'passed' ? 'ACCEPTED' : 
-                             status === 'failed' ? 'REJECTED' : 'ON_HOLD';
-        
-        // API를 통해 평가 저장 (의견과 상태 함께)
+        // API를 통해 평가 저장
         await evaluationMutation.mutateAsync({
           applicationId: parseInt(applicant.id),
           evaluationData: {
             comment: memos[applicant.id] || '',
-            status: backendStatus
+            status: status
           }
         });
         
         // 로컬 상태도 업데이트
         setApplicantStatuses(applicant.id, status);
-        console.log(`평가 상태 변경 완료: ${applicant.name} -> ${status}`);
-        
-        // 성공 피드백
-        alert(`${applicant.name}의 평가가 저장되었습니다. (${status === 'passed' ? '합격' : status === 'failed' ? '불합격' : '보류'})`);
-        
       } catch (error) {
         console.error('평가 저장 실패:', error);
         // 에러 발생 시에도 로컬 상태는 업데이트 (사용자 경험 개선)
         setApplicantStatuses(applicant.id, status);
-        
-        // 에러 피드백
-        alert('평가 저장에 실패했습니다. 다시 시도해주세요.');
       }
     }
   };
@@ -266,7 +241,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
       
       const maxScore = evalItem.maxScore !== undefined ? evalItem.maxScore : (resumeItem?.maxScore !== undefined ? resumeItem.maxScore : 10);
       
-    return {
+      return {
         name: resumeItem?.name || evalItem.resumeItemName || '알 수 없는 항목',
         score: evalItem.score || 0,
         maxScore: maxScore, // maxScore가 0이어도 유효한 값으로 처리
@@ -278,17 +253,17 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     // 자기소개서 평가 결과를 그대로 반환
     const coverLetterItems = evaluationResult.coverLetterQuestionEvaluations?.map(item => ({
       name: `자기소개서 문항 ${item.coverLetterQuestionId}`,
-      score: item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3, // EXCELLENT/GOOD이면 5점, NORMAL/POOR이면 3점
+      score: item.answerEvaluations?.find(evaluation => evaluation.grade === '긍정') ? 5 : 3, // 긍정이면 5점, 부정이면 3점
       maxScore: 5,
       content: item.summary || '',
-      description: `자기소개서: ${item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3}/5점`
+      description: `자기소개서: ${item.answerEvaluations?.find(evaluation => evaluation.grade === '긍정') ? 5 : 3}/5점`
     })) || [];
 
     // 총점 계산
     const totalResumeScore = resumeItemsWithDetails.reduce((sum, item) => sum + item.score, 0);
     const totalMaxScore = resumeItemsWithDetails.reduce((sum, item) => sum + item.maxScore, 0);
 
-        return {
+    return {
       resumeItems: resumeItemsWithDetails,
       coverLetterItems,
       totalResumeScore,
@@ -296,240 +271,245 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     };
   };
 
-   // 평가기준 별 내용분석 데이터 - coverLetterQuestionsData에서 가져오기
-   const getEssayAnalysis = (applicantName: string, questionNumber: number) => {
-     // coverLetterQuestionsData에서 평가 결과 데이터 사용
-     if (coverLetterQuestionsData && coverLetterQuestionsData.coverLetterQuestions.length > 0) {
-       try {
-         // 현재 질문 번호에 해당하는 데이터 찾기
-         const currentQuestionData = coverLetterQuestionsData.coverLetterQuestions.find((question: any) => 
-           question.coverLetterQuestionId === questionNumber || 
-           coverLetterQuestionsData.coverLetterQuestions.indexOf(question) + 1 === questionNumber
-         );
-         
-         if (currentQuestionData) {
-           const evaluationCriteria: { [key: string]: { 
-             criteria: string;
-             reason: string;
-             content: string;
-             grade: string;
-             scoreLevel: string;
-           } } = {};
-           const keyPoints: Array<{ text: string; category: string; score: string }> = [];
-           
-           // answerEvaluations에서 평가 기준별 내용 분석 생성
-           if (currentQuestionData.answerEvaluations && Array.isArray(currentQuestionData.answerEvaluations)) {
-             currentQuestionData.answerEvaluations.forEach((answerEval: any) => {
-               const criteriaName = answerEval.evaluationCriteriaName || answerEval.criteriaName || '평가 기준';
-               const grade = answerEval.grade || 'normal';
-               const evaluatedContent = answerEval.evaluatedContent || answerEval.content || '';
-               const evaluationReason = answerEval.evaluationReason || answerEval.reason || '';
-               
-               let scoreLevel = '';
-               if (grade === 'EXCELLENT' || grade === 'excellent') {
-                 scoreLevel = 'excellent';
-               } else if (grade === 'GOOD' || grade === 'good') {
-                 scoreLevel = 'good';
-               } else if (grade === 'NORMAL' || grade === 'normal') {
-                 scoreLevel = 'normal';
-               } else if (grade === 'POOR' || grade === 'poor') {
-                 scoreLevel = 'poor';
-      } else {
-                 scoreLevel = 'average';
-               }
-               
-               // 3개 항목으로 구성: 기준, 이유, 해당 내용
-               evaluationCriteria[criteriaName] = { 
-                 criteria: criteriaName,
-                 reason: evaluationReason,
-                 content: evaluatedContent,
-                 grade: grade,
-                 scoreLevel: scoreLevel
-               };
-               
-               // 키포인트 생성
-               keyPoints.push({
-                 text: `${criteriaName}: ${evaluatedContent}`,
-                 category: criteriaName,
-                 score: scoreLevel
-               });
-             });
-           }
-           
-           
-
-           
+  // 자기소개서 분석 데이터
+  const getEssayAnalysis = (applicantName: string, questionNumber: number) => {
+    if (applicantName === '이지호') {
+      if (questionNumber === 1) {
         return {
-             keyPoints,
-             evaluationCriteria,
+          keyPoints: [
+            { text: '사용자 경험을 최우선으로 생각하며', category: 'attitude', score: 'excellent' },
+            { text: 'AI 기술과 결합된 웹 서비스 개발에 큰 관심', category: 'motivation', score: 'good' },
+            { text: 'React와 TypeScript를 중심으로 한 모던 프론트엔드 기술 스택에 능숙', category: 'technical', score: 'excellent' },
+            { text: '팀 프로젝트를 통해 디자이너, 백엔드 개발자와의 협업 경험', category: 'collaboration', score: 'good' }
+          ],
+          evaluationCriteria: {
+            motivation: { feedback: '지원 동기가 구체적이고 회사에 대한 이해도가 높음' },
+            relevance: { feedback: '직무와의 연관성이 명확하게 드러남' },
+            specificity: { feedback: '구체적인 기술 스택과 경험을 제시' },
+            passion: { feedback: '개발에 대한 열정과 목표가 잘 표현됨' }
+          },
           suggestions: [
-
+            '회사의 구체적인 프로젝트나 기술에 대한 언급이 있다면 더 좋을 것',
+            '본인만의 차별화된 강점을 더 부각시킬 필요',
+            '향후 기여 방안을 더 구체적으로 제시하면 좋을 것'
           ]
         };
-         }
-       } catch (error) {
-         console.error('coverLetterQuestionsData 파싱 오류:', error);
+      } else {
+        return {
+          keyPoints: [
+            { text: '실시간 협업 대시보드', category: 'project', score: 'excellent' },
+            { text: '초기 로딩 시간을 40% 단축', category: 'achievement', score: 'excellent' },
+            { text: 'React.memo와 useMemo를 적절히 활용', category: 'technical', score: 'good' },
+            { text: 'ARIA 라벨과 키보드 네비게이션을 구현', category: 'quality', score: 'good' }
+          ],
+          evaluationCriteria: {
+            experience: { feedback: '구체적이고 의미있는 프로젝트 경험 제시' },
+            technical: { feedback: '최신 기술 스택 활용과 성능 최적화 경험' },
+            achievement: { feedback: '정량적 성과 지표 제시 (40% 단축)' },
+            teamwork: { feedback: '협업 도구와 프로세스에 대한 이해' }
+          },
+          suggestions: [
+            '프로젝트의 사업적 임팩트나 사용자 수 등 규모 언급 필요',
+            '기술적 챌린지와 해결 과정을 더 자세히 설명',
+            '리더십이나 주도적 역할에 대한 경험 추가 필요'
+          ]
+        };
       }
     }
     
-     // 기본값 (데이터가 없는 경우)
+    // 김지원 기본값
+    if (questionNumber === 1) {
       return {
-       keyPoints: [],
-        evaluationCriteria: {
-         '기본 평가': { 
-           criteria: '기본 평가',
-           reason: '평가 데이터를 불러오는 중입니다.',
-           content: '평가 결과를 기다려주세요.',
-           grade: 'normal',
-           scoreLevel: 'average'
-         }
-       },
-       suggestions: ['평가 결과를 기다려주세요.']
-     };
-   };
-
-  // AI 분석 데이터 - evaluationResult에서 실제 데이터 사용
-  const getAIAnalysis = (applicantName: string) => {
-    // 로딩 중인 경우
-    if (evaluationLoading) {
-      return {
-        overallAssessment: '평가 데이터를 불러오는 중입니다.',
-        strengths: ['데이터를 불러오는 중입니다.'],
-        weaknesses: ['데이터를 불러오는 중입니다.'],
-        keyInsights: ['평가 결과를 기다려주세요.'],
-        recommendation: '평가 중',
-        confidenceLevel: 0
-      };
-    }
-
-    // 오류가 있는 경우
-    if (evaluationError) {
-      return {
-        overallAssessment: '평가 데이터를 불러오는 중 오류가 발생했습니다.',
-        strengths: ['오류로 인해 데이터를 불러올 수 없습니다.'],
-        weaknesses: ['오류로 인해 데이터를 불러올 수 없습니다.'],
-        keyInsights: ['평가 결과를 불러오는 중 오류가 발생했습니다.'],
-        recommendation: '오류 발생',
-        confidenceLevel: 0
-      };
-    }
-
-    // evaluationResult에서 실제 데이터 사용
-    if (evaluationResult) {
-      // overallAnalysis가 있는 경우 (새로운 DTO 구조)
-      if (evaluationResult.overallAnalysis) {
-        const overallAnalysis = evaluationResult.overallAnalysis;
-        
-      return {
-          overallAssessment: overallAnalysis.overallEvaluation || '종합 평가를 진행 중입니다.',
-          strengths: overallAnalysis.strengths && overallAnalysis.strengths.length > 0 
-            ? overallAnalysis.strengths 
-            : ['강점 분석을 진행 중입니다.'],
-          weaknesses: overallAnalysis.improvements && overallAnalysis.improvements.length > 0 
-            ? overallAnalysis.improvements 
-            : ['개선점 분석을 진행 중입니다.'],
-        keyInsights: [
-            'AI 분석을 통한 종합적인 평가 결과',
-            '이력서와 자기소개서를 종합한 역량 분석',
-            '지원자별 맞춤형 평가 기준 적용'
-          ],
-          recommendation: overallAnalysis.aiRecommendation || 'AI 추천 결과를 생성 중입니다.',
-          confidenceLevel: overallAnalysis.aiReliability || 0
-        };
-      }
-
-      // overall_evaluation이 있는 경우 (백엔드 DB 컬럼명)
-      if (evaluationResult.overall_evaluation) {
-        try {
-          const overallEval = typeof evaluationResult.overall_evaluation === 'string' 
-            ? JSON.parse(evaluationResult.overall_evaluation) 
-            : evaluationResult.overall_evaluation;
-          
-    return {
-            overallAssessment: overallEval.overallEvaluation || '종합 평가를 진행 중입니다.',
-            strengths: overallEval.strengths && overallEval.strengths.length > 0 
-              ? overallEval.strengths 
-              : ['강점 분석을 진행 중입니다.'],
-            weaknesses: overallEval.improvements && overallEval.improvements.length > 0 
-              ? overallEval.improvements 
-              : ['개선점 분석을 진행 중입니다.'],
-      keyInsights: [
-              'AI 분석을 통한 종합적인 평가 결과',
-              '이력서와 자기소개서를 종합한 역량 분석',
-              '지원자별 맞춤형 평가 기준 적용'
-            ],
-            recommendation: overallEval.aiRecommendation || 'AI 추천 결과를 생성 중입니다.',
-            confidenceLevel: overallEval.aiReliability || 0
-          };
-        } catch (error) {
-          console.error('overall_evaluation 파싱 오류:', error);
-        }
-      }
-
-      // 데이터가 없는 경우 기본값
-      return {
-        overallAssessment: 'AI가 이력서와 자기소개서를 종합 분석한 결과입니다.',
-        strengths: ['전반적으로 우수한 역량을 보여줍니다.'],
-        weaknesses: ['지속적인 성장 가능성이 있습니다.'],
-        keyInsights: [
-          '이력서와 자기소개서를 종합한 역량 분석',
-          '지원자별 맞춤형 평가 기준 적용',
-          'AI 기반 객관적 평가 결과'
+        keyPoints: [
+          { text: 'AI 기술이 사회에 미치는 영향에 깊이 공감', category: 'motivation', score: 'good' },
+          { text: 'AI 모델의 성능을 최적화하고 안정적인 서비스를 제공', category: 'goal', score: 'good' },
+          { text: '자료구조, 알고리즘, 네트워크 지식', category: 'technical', score: 'good' },
+          { text: '팀 프로젝트를 통해 동료들과 협업하며 문제를 해결', category: 'collaboration', score: 'excellent' }
         ],
-        recommendation: '지원자의 강점을 바탕으로 한 맞춤형 추천 결과입니다.',
+        evaluationCriteria: {
+          motivation: { feedback: '일반적인 동기 서술, 구체성 부족' },
+          relevance: { feedback: 'AI와 백엔드 연결점 잘 제시' },
+          specificity: { feedback: '구체적인 경험이나 프로젝트 부족' },
+          passion: { feedback: '열정은 느껴지나 차별화 부족' }
+        },
+        suggestions: [
+          '더 구체적인 지원 동기와 회사 연구 필요',
+          '본인만의 독특한 경험이나 관점 추가',
+          '향후 구체적인 기여 방안 제시 필요'
+        ]
+      };
+    } else {
+      return {
+        keyPoints: [
+          { text: '사용자 맞춤형 추천 시스템', category: 'project', score: 'good' },
+          { text: '응답 속도를 30% 이상 향상', category: 'achievement', score: 'good' },
+          { text: 'Python과 Django를 활용', category: 'technical', score: 'good' },
+          { text: 'GitHub을 통한 버전 관리와 코드 리뷰', category: 'process', score: 'good' }
+        ],
+        evaluationCriteria: {
+          experience: { feedback: '의미있는 프로젝트이나 규모나 임팩트 불분명' },
+          technical: { feedback: '백엔드 기술 스택 보유하나 깊이 부족' },
+          achievement: { feedback: '성과 지표 있으나 구체적 설명 부족' },
+          teamwork: { feedback: '협업 프로세스에 대한 좋은 이해' }
+        },
+        suggestions: [
+          '프로젝트의 사용자 수나 데이터 규모 등 구체적 정보 필요',
+          '기술적 어려움과 해결 과정 상세 설명',
+          '본인의 역할과 기여도를 더 명확히 제시'
+        ]
+      };
+    }
+  };
+
+  // AI 분석 데이터
+  const getAIAnalysis = (applicantName: string) => {
+    if (applicantName === '이지호') {
+      return {
+        overallAssessment: '우수한 프론트엔드 개발 역량과 실무 경험을 보유한 지원자입니다.',
+        strengths: [
+          'React, TypeScript 등 최신 프론트엔드 기술 스택 보유',
+          '성능 최적화 경험 (로딩 시간 40% 단축)',
+          '접근성을 고려한 개발 경험',
+          '팀 협업 및 커뮤니케이션 능력'
+        ],
+        weaknesses: [
+          '백엔드 경험 부족',
+          '대규모 프로젝트 경험 한정적',
+          '리더십 경험 부족'
+        ],
+        keyInsights: [
+          '실무 중심의 구체적인 경험 서술',
+          '기술적 역량과 비즈니스 가치 연결 능력',
+          '지속적인 학습 의지 표현'
+        ],
+        recommendation: '합격 권장',
         confidenceLevel: 85
       };
     }
     
-    // 기본값 (데이터가 없는 경우)
+    // 김지원 기본값
     return {
-      overallAssessment: '평가 데이터를 불러오는 중입니다.',
-      strengths: ['데이터를 불러오는 중입니다.'],
-      weaknesses: ['데이터를 불러오는 중입니다.'],
-      keyInsights: ['평가 결과를 기다려주세요.'],
-      recommendation: '평가 중',
-      confidenceLevel: 0
+      overallAssessment: '견고한 백엔드 개발 기초와 AI 분야에 대한 명확한 목표를 가진 지원자입니다.',
+      strengths: [
+        'Python, Django 등 백엔드 기술 스택 보유',
+        'AI 분야에 대한 관심과 이해',
+        '클라우드 인프라 구축 경험',
+        '데이터베이스 최적화 경험 (30% 성능 향상)'
+      ],
+      weaknesses: [
+        '프론트엔드 기술 경험 부족',
+        '자기소개서 구체성 부족',
+        '프로젝트 규모의 한계'
+      ],
+      keyInsights: [
+        'AI 분야에 대한 진정성 있는 관심',
+        '기술적 문제 해결 경험',
+        '팀워크와 커뮤니케이션 중시'
+      ],
+      recommendation: '조건부 합격',
+      confidenceLevel: 75
     };
   };
 
-  // 지원자별 데이터 - 실제 API 데이터 사용
+  // 지원자별 데이터
   const getApplicantData = (applicantName: string) => {
-    console.log('getApplicantData called for:', applicantName);
-    console.log('coverLetterQuestionsData:', coverLetterQuestionsData);
-    
-    // 실제 API 데이터가 있으면 사용
-    if (coverLetterQuestionsData && coverLetterQuestionsData.coverLetterQuestions.length > 0) {
-      console.log('Using API data, questions count:', coverLetterQuestionsData.coverLetterQuestions.length);
-      const result: any = {};
-      coverLetterQuestionsData.coverLetterQuestions.forEach((question, index) => {
-        const questionNumber = index + 1;
-        console.log(`Question ${questionNumber}:`, {
-          questionContent: question.questionContent,
-          answerContent: question.answerContent,
-          charCount: question.charCount,
-          keywords: question.keywords
-        });
-        result[questionNumber] = {
-          question: question.questionContent,
-          charCount: question.charCount,
-          answer: question.answerContent,
-          tags: question.keywords || [],
-          summary: question.summary || '',
-          coverLetterQuestionId: question.coverLetterQuestionId,
-          answerEvaluations: question.answerEvaluations || []
-        };
-      });
-      console.log('Final result:', result);
-      return result;
+    if (applicantName === '이지호') {
+      return {
+        1: {
+          question: "해당 회사에 지원한 동기를 서술하시오. (500자)",
+          charCount: "485자 / 500자",
+          answer: `프론트엔드 개발자로서 사용자 경험을 최우선으로 생각하며, AI 기술과 결합된 웹 서비스 개발에 큰 관심을 가지고 있습니다. 귀사의 AI 서비스들이 직관적이고 접근성 높은 인터페이스로 사용자들에게 혁신적인 경험을 제공하는 것을 보며 강한 매력을 느꼈습니다.
+
+저는 React와 TypeScript를 중심으로 한 모던 프론트엔드 기술 스택에 능숙하며, 사용자 중심의 UI/UX 설계와 구현에 열정을 가지고 있습니다. 특히 복잡한 데이터를 시각적으로 이해하기 쉽게 표현하고, 사용자의 니즈�� 파악하여 직관적인 인터페이스를 구현하는 것에 흥미를 느낍니다.
+
+또한 팀 프로젝트를 통해 디자이너, 백엔드 개발자와의 협업 경험을 쌓으며 효과적인 커뮤니케이션과 코드 리뷰 문화의 중요성을 깨달았습니다. 귀사의 AI 팀에 합류하여 사용자가 AI 기술을 더욱 쉽고 자연스럽게 활용할 수 있는 프론트엔드 환경을 구축하는 데 기여하고 싶습니다.`,
+          tags: ["# React", "# TypeScript", "# UI/UX", "# 협업"],
+          summary: `지원자는 사용자 경험을 중시하는 프론트엔드 개발자로서 AI 기술과 결합된 웹 서비스 개발에 관심을 표명했습니다. React와 TypeScript 중심의 모던 기술 스택 역량과 복잡한 데이터의 시각화, 직관적 인터페이스 구현에 대한 열정을 강조했습니다. 팀 협업과 커뮤니케이션 경험도 언급하며 AI 서비스의 사용자 접근성 향상에 기여하고자 하는 의지를 보였습니다.`,
+          basicInfo: {
+            university: "한양대학교",
+            gpa: "3.78 / 4.5",
+            certificate: "웹디자인기능사",
+            language: "TOEIC 880점",
+            awards: "대학생 프로그래밍 대회 3등",
+            experience: "FE 개발 인턴 4개월"
+          }
+        },
+        2: {
+          question: "직무와 관련된 경험에 대해 서술하시오. (800자)",
+          charCount: "750자 / 800자",
+          answer: `프론트엔드 개발자로서의 역량을 쌓기 위해 다양한 프로젝트를 통해 실무 경험을 축적해왔습니다. 특히 사용자 인터페이스 최적화와 성능 개선에 중점을 두어 개발해왔습니다.
+
+가장 의미 있었던 프로젝트는 '실시간 협업 대시보드'를 개발한 것입니다. 이 프로젝트에서 저는 React와 TypeScript를 활용하여 여러 사용자가 동시에 데이터를 조작하고 시각화할 수 있는 인터페이스를 구현했습니다. 실시간 데이터 동기화를 위해 WebSocket을 활용했고, 상태 관리는 Zustand를 사용하여 복잡한 데이터 플로우를 효율적으로 관리했습니다.
+
+성능 최적화 측면에서는 React.memo와 useMemo를 적절히 활용하여 불필요한 리렌더링을 방지하고, 코드 스플리팅을 통해 초기 로딩 시간을 40% 단축시켰습니다. 또한 접근성을 고려하여 ARIA 라벨과 키보드 네비게이션을 구현하여 모든 사용자가 원활하게 서비스를 이용할 수 있도록 했습니다.
+
+협업 과정에서는 Figma를 통해 디자이너와 긴밀히 소통하며 디자인 시스템을 구축했고, Storybook을 활용하여 컴포넌트 문서화를 진행했습니다. 또한 Jest와 React Testing Library를 사용한 테스트 작성으로 코드 품질을 향상시켰습니다.
+
+이러한 경험을 바탕으로 사용자 중심의 프론트엔드 개발자로서 귀사의 AI 서비스 발전에 기여하고 싶습니다.`,
+          tags: ["# React", "# TypeScript", "# 성능최적화", "# 접근성"],
+          summary: `지원자는 '실시간 협업 대시보드' 프로젝트를 통해 React, TypeScript, WebSocket, Zustand를 활용한 복잡한 인터페이스 구현 경험을 강조했습니다. 성능 최적화를 통해 로딩 시간 40% 단축, 접근성 고려한 ARIA 구현, Figma를 통한 디자이너 협업, Storybook 문서화, Jest/React Testing Library를 활용한 테스트 경험을 언급했습니다.`,
+          basicInfo: {
+            university: "한양대학교",
+            gpa: "3.78 / 4.5",
+            certificate: "웹디자인기능사",
+            language: "TOEIC 880점",
+            awards: "대학생 프로그래밍 대회 3등",
+            experience: "FE 개발 인턴 4개월"
+          }
+        }
+      };
     }
     
-    console.log('No API data available, using fallback');
-    return {};
+    // 기본 김지원 데이터
+    return {
+      1: {
+        question: "해당 회사에 지원한 동기를 서술하시오. (500자)",
+        charCount: "430자 / 500자",
+        answer: `AI 기술이 사회에 미치는 영향에 깊이 공감하며, AI 기술을 실제 서비스로 구현하는 백엔드 개발에 흥미를 느껴왔습니다. 특히, 귀사의 AI 개발 팀이 진행하는 프로젝트들이 사용자에게 혁신적인 가치를 제공한다는 점에 강한 매력을 느꼈습니다.
+
+저는 8기의 일원이 되어 AI 모델의 성능을 최적화하고 사용자에게 안정적인 서비스를 제공하는 백엔드 시스템을 구축하는 데 기여하고 싶습니다. 학교에서 컴퓨터 공학을 전공하며 습득한 자료구조, 알고리즘, 네트워크 지식을 바탕으로 백엔드 개발 역량을 꾸준히 쌓아왔습니다. 클라우드 기반 인프라 구축과 API 개발 경험을 통해, 복잡한 시스템을 효율적으로 설계하고 구현하는 능력을 길렀습니다.
+
+또한, 팀 프로젝트를 통해 동료들과 협업하며 문제를 해결하고, 더 나은 결과물을 만들기 위해 끊임없이 소통하는 자세를 익혔습니다. 이러한 경험과 열정을 바탕으로 AI 개발 팀의 성장에 기여하고, AI 기술이 더 많은 사람에게 긍정적인 영향을 미칠 수 있도록 최선을 다하겠습니다.`,
+        tags: ["# 백엔드", "# AI", "# 협업"],
+        summary: `지원자는 AI 모델의 성능을 최적화하고 안정적인 서비스를 제공하는 백엔드 시스템 구축에 기여하고 싶다는 포부를 밝혔습니다. 이를 뒷받침하기 위해 학교에서 배운 컴퓨터 공학 지식(자료구조, 알고리즘, 네트워크)과 클라우드 기반 인프라 구축, API 개발 경험을 통해 쌓은 역량을 강조했습니다.`,
+        basicInfo: {
+          university: "한양대학교",
+          gpa: "3.96 / 4.5",
+          certificate: "정보처리기사",
+          language: "TOEIC 930점",
+          awards: "KT 헤커톤 예선 9등, 학술재 은상",
+          experience: "BE 팀 인턴 6개월"
+        }
+      },
+      2: {
+        question: "직무와 관련된 경험에 대해 서술하시오. (800자)",
+        charCount: "720자 / 800자",
+        answer: `저는 백엔드 개발에 대한 깊은 이해를 바탕으로 다양한 프로젝트를 수행하며 실무 역량을 쌓아왔습니다. 특히, 사용자의 데이터를 효율적으로 처리하고, 안정적인 서비스를 제공하는 시스템 구축에 중점을 두었습니다.
+
+가장 대표적인 경험은 '사용자 맞춤형 추천 시스템'을 개발한 것입니다. 이 프로젝트에서 저는 백엔드 개발을 담당하며, Python과 Django를 활용해 사용자의 활동 데이터를 수집하고 분석하는 API를 설계했습니다. 특히, 대량의 데이터를 실시간으로 처리하기 위해 데이터베이스 쿼리를 최적화하고 캐싱 전략을 도입하여 응답 속도를 30% 이상 향상시켰습니다. 이 과정에서 발생한 데이터 정합성 문제는 비동기 처리와 에러 핸들링 로직을 추가하며 해결했습니다.
+
+또한, 클라우드 환경에서 서비스 배포 및 운영 경험도 있습니다. Docker를 활용해 애플리케이션을 컨테이너화하고, AWS EC2에 배포하여 서비스 안정성을 확보했습니다. 이를 통해 개발 환경과 운영 환경의 차이로 인한 문제를 최소화하고, 지속적인 통합 및 배포(CI/CD) 프로세스를 이해하게 되었습니다.
+
+팀 프로젝트를 진행하며 협업의 중요성을 깨달았습니다. GitHub을 통한 버전 관리와 코드 리뷰를 통해 코드 품질을 높였고, 매일 진행되는 스크럼 회의를 통해 팀원들과 소통하며 프로젝트의 목표와 진행 상황을 공유했습니다. 또한, 예기치 않은 문제 발생 시, 적극적으로 해결책을 모색하고 팀원들과 지식을 공유하며 효과적으로 문제를 해결했습니다.
+
+이러한 경험들을 통해 저는 백엔드 개발에 필요한 기술적인 역량뿐만 아니라, 협업을 통해 시너지를 창출하는 자세를 갖추게 되었습니다. 귀사 AI 개발 팀의 백엔드 인턴으로 합류하여, 제가 가진 지식과 경험을 바탕으로 팀의 목표 달성에 기여하고 싶습니다.`,
+        tags: ["# Python", "# Django", "# AWS", "# 최적화"],
+        summary: `지원자는 '사용자 맞춤형 추천 시스템' 개발을 통해 실무 경험을 쌓았다고 밝혔습니다. Python과 Django를 활용한 API 설계, 데이터베이스 최적화를 통한 30% 성능 향상, Docker와 AWS를 활용한 클라우드 배포 경험을 강조했습니다. 또한 GitHub을 통한 코드 리뷰와 스크럼 회의를 통한 협업 경험도 언급했습니다.`,
+        basicInfo: {
+          university: "한양대학교",
+          gpa: "3.96 / 4.5",
+          certificate: "정보처리기사",
+          language: "TOEIC 930점",
+          awards: "KT 헤커톤 예선 9등, 학술재 은상",
+          experience: "BE 팀 인턴 6개월"
+        }
+      }
+    };
   };
 
   const currentApplicantData = useMemo(() => {
     return getApplicantData(selectedApplicant);
-  }, [selectedApplicant, coverLetterQuestionsData]);
+  }, [selectedApplicant]);
   
   const currentQuestionData = useMemo(() => {
     return currentApplicantData[currentQuestion as keyof typeof currentApplicantData];
@@ -547,7 +527,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
 
   const aiAnalysis = useMemo(() => {
     return getAIAnalysis(selectedApplicant);
-  }, [selectedApplicant, evaluationResult, evaluationLoading, evaluationError]);
+  }, [selectedApplicant]);
 
   const essayAnalysis = useMemo(() => {
     return getEssayAnalysis(selectedApplicant, currentQuestion);
@@ -578,264 +558,39 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
     }
   };
 
-  // 특정 문장을 하이라이트하는 함수 - 실제 평가 결과 사용 (겹치는 부분도 개별 처리)
+  // 특정 문장을 하이라이트하는 함수
   const renderAnswerWithHighlights = (answer: string) => {
-    console.log('renderAnswerWithHighlights called with answer:', answer);
-    console.log('currentQuestionData?.answerEvaluations:', currentQuestionData?.answerEvaluations);
+    // 현재 선택된 지원자와 문항의 핵심 포인트 가져오기
+    const keyPoints = essayAnalysis.keyPoints;
     
-    if (!currentQuestionData?.answerEvaluations || currentQuestionData.answerEvaluations.length === 0) {
-      console.log('No answerEvaluations found, returning plain text');
-      return <span>{answer}</span>;
-    }
+    let highlightedAnswer = answer;
     
-    // 모든 평가 결과를 수집하여 정확한 위치별로 개별 처리
-    const allHighlights: Array<{
-      start: number;
-      end: number;
-      text: string;
-      evaluation: any;
-      id: string; // 고유 식별자 추가
-    }> = [];
-    
-    currentQuestionData.answerEvaluations.forEach((evaluation: any, evalIndex: number) => {
-      const evaluatedContent = evaluation.evaluatedContent;
-      const evaluationCriteriaName = evaluation.evaluationCriteriaName;
-      console.log(`Evaluation ${evalIndex + 1}:`, {
-        criteriaName: evaluationCriteriaName,
-        evaluatedContent: evaluatedContent,
-        grade: evaluation.grade
-      });
-      
-      if (!evaluatedContent) return;
-      
-      // 텍스트에서 모든 매칭 위치 찾기
-      let searchIndex = 0;
-      let matchCount = 0;
-      while (true) {
-        const foundIndex = answer.indexOf(evaluatedContent, searchIndex);
-        if (foundIndex === -1) break;
+    // 각 핵심 포인트에 대해 하이라이트 적용
+    keyPoints.forEach((point, index) => {
+      if (highlightedAnswer.includes(point.text)) {
+        const colorClass = point.score === 'excellent' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                          point.score === 'good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
+                          'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
         
-        allHighlights.push({
-          start: foundIndex,
-          end: foundIndex + evaluatedContent.length,
-          text: evaluatedContent,
-          evaluation: evaluation,
-          id: `${evalIndex}-${matchCount}` // 고유 식별자
-        });
+        const tooltipText = `${point.category === 'motivation' ? '동기' :
+                             point.category === 'technical' ? '기술' :
+                             point.category === 'collaboration' ? '협업' :
+                             point.category === 'project' ? '프로젝트' :
+                             point.category === 'achievement' ? '성과' :
+                             point.category === 'attitude' ? '태도' :
+                             point.category === 'goal' ? '목표' :
+                             point.category === 'quality' ? '품질' :
+                             point.category === 'process' ? '프로세스' : point.category} 관련 ${point.score === 'excellent' ? '우수' : point.score === 'good' ? '좋은' : '보통'} 내용`;
         
-        searchIndex = foundIndex + 1;
-        matchCount++;
+        highlightedAnswer = highlightedAnswer.replace(
+          point.text,
+          `<mark class="${colorClass} px-1 py-0.5 rounded cursor-help" title="${tooltipText}">${point.text}</mark>`
+        );
       }
     });
     
-    // 시작 위치로 정렬
-    allHighlights.sort((a, b) => a.start - b.start);
-    
-    console.log('All highlights found:', allHighlights);
-    
-    // 모든 하이라이트를 반드시 처리하는 로직
-    const processedHighlights: Array<{
-      start: number;
-      end: number;
-      text: string;
-      evaluations: any[];
-      id: string;
-    }> = [];
-    
-    // 처리된 하이라이트를 추적하는 Set
-    const processedIds = new Set<string>();
-    
-    // 겹치는 하이라이트를 그룹화
-    for (let i = 0; i < allHighlights.length; i++) {
-      const current = allHighlights[i];
-      
-      // 이미 처리된 하이라이트는 건너뛰기
-      if (processedIds.has(current.id)) {
-        continue;
-      }
-      
-      const overlapping = [current];
-      processedIds.add(current.id);
-      
-      // 겹치는 하이라이트 찾기
-      for (let j = i + 1; j < allHighlights.length; j++) {
-        const next = allHighlights[j];
-        if (processedIds.has(next.id)) {
-          continue; // 이미 처리된 하이라이트는 건너뛰기
-        }
-        
-        if (next.start < current.end) {
-          overlapping.push(next);
-          processedIds.add(next.id);
-        } else {
-          break;
-        }
-      }
-      
-      // 겹치는 하이라이트들을 하나로 합치기
-      if (overlapping.length > 1) {
-        const minStart = Math.min(...overlapping.map(h => h.start));
-        const maxEnd = Math.max(...overlapping.map(h => h.end));
-        const combinedText = answer.substring(minStart, maxEnd);
-        
-        processedHighlights.push({
-          start: minStart,
-          end: maxEnd,
-          text: combinedText,
-          evaluations: overlapping.map(h => h.evaluation),
-          id: overlapping.map(h => h.id).join('-')
-        });
-      } else {
-        // 겹치지 않는 하이라이트
-        processedHighlights.push({
-          start: current.start,
-          end: current.end,
-          text: current.text,
-          evaluations: [current.evaluation],
-          id: current.id
-        });
-      }
-    }
-    
-    // 처리되지 않은 하이라이트가 있는지 확인하고 추가
-    allHighlights.forEach((highlight) => {
-      if (!processedIds.has(highlight.id)) {
-        console.warn(`처리되지 않은 하이라이트 발견: ${highlight.id}`);
-        processedHighlights.push({
-          start: highlight.start,
-          end: highlight.end,
-          text: highlight.text,
-          evaluations: [highlight.evaluation],
-          id: highlight.id
-        });
-      }
-    });
-    
-    // 시작 위치로 정렬
-    processedHighlights.sort((a, b) => a.start - b.start);
-    
-    console.log('Processed highlights:', processedHighlights);
-    console.log('Total highlights processed:', processedHighlights.length);
-    console.log('Original highlights count:', allHighlights.length);
-    
-    // 텍스트를 부분별로 분할
-    const parts: Array<{ 
-      text: string; 
-      isHighlighted: boolean; 
-      evaluations?: any[];
-      id?: string;
-    }> = [];
-    
-    let currentIndex = 0;
-    
-    processedHighlights.forEach((highlight) => {
-      // 하이라이트되지 않은 앞부분 추가
-      if (highlight.start > currentIndex) {
-        parts.push({ 
-          text: answer.substring(currentIndex, highlight.start), 
-          isHighlighted: false 
-        });
-      }
-      
-      // 하이라이트된 부분 추가
-      parts.push({ 
-        text: highlight.text, 
-        isHighlighted: true,
-        evaluations: highlight.evaluations,
-        id: highlight.id
-      });
-      
-      currentIndex = Math.max(currentIndex, highlight.end);
-    });
-    
-    // 마지막 남은 텍스트 추가
-    if (currentIndex < answer.length) {
-      parts.push({ 
-        text: answer.substring(currentIndex), 
-        isHighlighted: false 
-      });
-    }
-    
-    return (
-      <span>
-        {parts.map((part, index) => {
-          if (part.isHighlighted && part.evaluations) {
-            // 겹치는 평가 기준의 색상 계산
-            const getMixedColorClass = (evaluations: any[]) => {
-              if (evaluations.length === 1) {
-                // 단일 평가 기준
-                const grade = evaluations[0].grade;
-                if (grade === 'EXCELLENT') {
-                  return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
-                } else if (grade === 'GOOD') {
-                  return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
-                } else if (grade === 'NORMAL') {
-                  return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-                } else if (grade === 'POOR') {
-                  return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
-                } else {
-                  return 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300';
-                }
-              } else {
-                // 다중 평가 기준 - 색상 혼합
-                const excellentCount = evaluations.filter(e => e.grade === 'EXCELLENT').length;
-                const goodCount = evaluations.filter(e => e.grade === 'GOOD').length;
-                const normalCount = evaluations.filter(e => e.grade === 'NORMAL').length;
-                const poorCount = evaluations.filter(e => e.grade === 'POOR').length;
-                
-                if (excellentCount > 0) {
-                  // EXCELLENT이 있으면 - 진한 초록색
-                  return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
-                } else if (goodCount > 0) {
-                  // GOOD이 있으면 - 초록색
-                  return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
-                } else if (normalCount > 0) {
-                  // NORMAL이 있으면 - 노란색
-                  return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-                } else if (poorCount > 0) {
-                  // POOR이 있으면 - 빨간색
-                  return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
-                } else {
-                  // 기본값
-                  return 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300';
-                }
-              }
-            };
-            
-            const colorClass = getMixedColorClass(part.evaluations);
-            
-            // 여러 평가 기준이 있는 경우 툴팁에 모두 표시
-            const tooltipContent = part.evaluations.length > 1 
-              ? part.evaluations.map(evaluation => 
-                  `${evaluation.evaluationCriteriaName || '평가'}: ${evaluation.grade} - ${evaluation.evaluationReason}`
-                ).join('\n')
-              : `${part.evaluations[0].evaluationCriteriaName || '평가'} - ${part.evaluations[0].grade} 평가: ${part.evaluations[0].evaluationReason}`;
-            
-            return (
-              <TooltipProvider key={index}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <mark className={`${colorClass} px-1 py-0.5 rounded cursor-help`}>
-                      {part.text}
-                    </mark>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs whitespace-pre-line">
-                      <span className="font-medium">
-                        {part.evaluations.length > 1 ? '다중 평가:' : `${part.evaluations[0].evaluationCriteriaName || '평가'} - ${part.evaluations[0].grade} 평가:`}
-                      </span>
-                      <br />
-                      {tooltipContent}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            );
-          }
-          return <span key={index}>{part.text}</span>;
-        })}
-      </span>
-    );
+    // HTML을 JSX로 변환하여 반환
+    return <span dangerouslySetInnerHTML={{ __html: highlightedAnswer }} />;
   };
 
   // 현재 선택된 지원자의 메모 가져오기
@@ -1042,15 +797,9 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                       </div>
                       <div className="text-right">
                         <div className="text-sm text-gray-600 dark:text-muted-foreground mb-1">총점</div>
-                        {evaluationLoading ? (
-                          <div className="text-2xl font-semibold text-gray-400">로딩 중...</div>
-                        ) : evaluationError ? (
-                          <div className="text-2xl font-semibold text-red-500">오류 발생</div>
-                        ) : (
-                          <div className={`text-2xl font-semibold ${getScoreColor(actualTotalScore)}`}>
-                            {actualTotalScore}점 / {detailedScores.totalMaxScore}점
+                        <div className={`text-2xl font-semibold ${getScoreColor(actualTotalScore)}`}>
+                          {actualTotalScore}점 / {detailedScores.totalMaxScore}점
                         </div>
-                        )}
                       </div>
                     </div>
 
@@ -1078,15 +827,15 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
                                       <span className={`text-sm font-medium ${getScoreColor(item.score)}`}>
                                         {item.score}/{item.maxScore}점
-                              </span>
-                            </div>
+                                      </span>
+                                    </div>
                                     <div className="text-sm text-gray-600 dark:text-gray-400">
                                       <span className="font-medium">지원자 응답: </span>
                                       <span className="italic">"{item.content}"</span>
-                            </div>
-                            </div>
+                                    </div>
+                                  </div>
                                 ))}
-                          </div>
+                              </div>
                             </div>
                           )}
                           
@@ -1101,47 +850,52 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         자기소개서 문항 {item.coverLetterQuestionId}
                                       </span>
-                                      <span className={`text-sm font-medium ${getScoreColor(item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3)}`}>
-                                        {item.answerEvaluations?.find(evaluation => evaluation.grade === 'EXCELLENT' || evaluation.grade === 'GOOD') ? 5 : 3}/5점
-                              </span>
-                            </div>
+                                      <span className={`text-sm font-medium ${getScoreColor(item.answerEvaluations?.find(evaluation => evaluation.grade === '긍정') ? 5 : 3)}`}>
+                                        {item.answerEvaluations?.find(evaluation => evaluation.grade === '긍정') ? 5 : 3}/5점
+                                      </span>
+                                    </div>
                                     
                                     {/* 평가 결과 */}
                                     {item.answerEvaluations && item.answerEvaluations.length > 0 && (
                                       <div className="space-y-2">
                                         {item.answerEvaluations.map((evaluation, evalIndex) => (
-                                          <div key={evalIndex} className="text-sm border-l-2 border-gray-200 dark:border-gray-700 pl-3 mb-3">
-                                            <div className="flex items-center gap-2 mb-2">
-                                              <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                {evaluation.evaluationCriteriaName || '평가 결과'}:
-                                              </span>
+                                          <div key={evalIndex} className="text-sm">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="font-medium text-gray-700 dark:text-gray-300">평가 결과:</span>
                                               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                                evaluation.grade === 'EXCELLENT' 
-                                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                                                  : evaluation.grade === 'GOOD'
-                                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                                  : evaluation.grade === 'NORMAL'
-                                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                                  : evaluation.grade === 'POOR'
-                                                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                                                evaluation.grade === '긍정' 
+                                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                                                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                                               }`}>
                                                 {evaluation.grade}
-                              </span>
-                            </div>
+                                              </span>
+                                            </div>
                                             <div className="text-gray-600 dark:text-gray-400 mb-1">
                                               <span className="font-medium">평가된 내용: </span>
                                               <span className="italic">"{evaluation.evaluatedContent}"</span>
-                          </div>
+                                            </div>
                                             <div className="text-gray-600 dark:text-gray-400">
                                               <span className="font-medium">평가 이유: </span>
                                               <span>{evaluation.evaluationReason}</span>
                                             </div>
                                           </div>
                                         ))}
-                        </div>
-                      )}
+                                      </div>
+                                    )}
                                     
+                                    {/* 키워드 */}
+                                    {item.keywords && item.keywords.length > 0 && (
+                                      <div className="mt-2">
+                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">키워드: </span>
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {item.keywords.map((keyword, keywordIndex) => (
+                                            <span key={keywordIndex} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded dark:bg-blue-900 dark:text-blue-200">
+                                              {keyword}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                     
                                     {/* 요약 */}
                                     {item.summary && (
@@ -1231,13 +985,13 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                 return (
                                   <div key={index} className="flex items-center gap-3">
                                     {selectedIcon}
-                                <div>
+                                    <div>
                                       <div className="font-medium text-gray-900 dark:text-foreground">{item.name}</div>
-                                  <div className="text-sm text-gray-600 dark:text-muted-foreground">
+                                      <div className="text-sm text-gray-600 dark:text-muted-foreground">
                                         {item.content}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
                                 );
                               })}
                             </div>
@@ -1261,13 +1015,13 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                 return (
                                   <div key={index} className="flex items-center gap-3">
                                     {selectedIcon}
-                                <div>
+                                    <div>
                                       <div className="font-medium text-gray-900 dark:text-foreground">{item.name}</div>
-                                  <div className="text-sm text-gray-600 dark:text-muted-foreground">
+                                      <div className="text-sm text-gray-600 dark:text-muted-foreground">
                                         {item.content}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
                                 );
                               })}
                             </div>
@@ -1282,7 +1036,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                               <h3 className="text-lg font-semibold text-gray-900 dark:text-foreground">
-                                문항 {currentQuestion} / {coverLetterQuestionsData?.totalQuestions || 2}
+                                문항 {currentQuestion} / 2
                               </h3>
                               <div className="text-sm text-gray-600 dark:text-muted-foreground">
                                 {currentQuestionData?.charCount}
@@ -1302,7 +1056,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                 variant="outline"
                                 size="sm"
                                 onClick={handleNextQuestion}
-                                disabled={currentQuestion === (coverLetterQuestionsData?.totalQuestions || 2)}
+                                disabled={currentQuestion === 2}
                               >
                                 다음
                                 <ChevronRight className="w-4 h-4" />
@@ -1317,6 +1071,14 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                             </h4>
                           </div>
 
+                          {/* 키워드 태그 */}
+                          <div className="flex flex-wrap gap-2">
+                            {currentQuestionData?.tags?.map((tag: string, index: number) => (
+                              <Badge key={index} variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
 
                           {/* 자기소개서 내용 */}
                           <div className="bg-gray-50 dark:bg-muted rounded-lg p-4">
@@ -1336,77 +1098,85 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                             </p>
                           </div>
 
+                          {/* 핵심 포인트 */}
+                          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                            <h5 className="font-medium text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
+                              <Lightbulb className="w-4 h-4" />
+                              핵심 포인트
+                            </h5>
+                            <div className="space-y-2">
+                              {essayAnalysis.keyPoints.map((point, index) => (
+                                <div key={index} className="flex items-start gap-3">
+                                  <div className={`w-2 h-2 rounded-full mt-2 ${
+                                    point.score === 'excellent' ? 'bg-green-500' :
+                                    point.score === 'good' ? 'bg-blue-500' : 'bg-yellow-500'
+                                  }`} />
+                                  <div className="flex-1">
+                                    <div className="text-sm text-green-800 dark:text-green-200">
+                                      {point.text}
+                                    </div>
+                                    <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                      {point.category === 'motivation' ? '동기' :
+                                       point.category === 'technical' ? '기술' :
+                                       point.category === 'collaboration' ? '협업' :
+                                       point.category === 'project' ? '프로젝트' :
+                                       point.category === 'achievement' ? '성과' :
+                                       point.category === 'attitude' ? '태도' :
+                                       point.category === 'goal' ? '목표' :
+                                       point.category === 'quality' ? '품질' :
+                                       point.category === 'process' ? '프로세스' : point.category} • 
+                                      {point.score === 'excellent' ? '우수' : point.score === 'good' ? '좋음' : '보통'}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
-                          {/* 평가 기준별 내용 분석 */}
+                          {/* 평가 기준별 점수 */}
                           <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
                             <h5 className="font-medium text-purple-900 dark:text-purple-300 mb-3 flex items-center gap-2">
                               <Target className="w-4 h-4" />
                               평가 기준별 내용 분석
                             </h5>
                             <div className="space-y-4">
-                              {Object.entries(essayAnalysis.evaluationCriteria).map(([key, criteria]) => {
-                                // 평가 등급에 따른 색상 결정
-                                const getScoreColor = (scoreLevel: string) => {
-                                  if (scoreLevel === 'excellent') return 'border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/20';
-                                  if (scoreLevel === 'poor') return 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20';
-                                  return 'border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20';
-                                };
-                                
-                                const getTextColor = (scoreLevel: string) => {
-                                  if (scoreLevel === 'excellent') return 'text-green-800 dark:text-green-200';
-                                  if (scoreLevel === 'poor') return 'text-red-800 dark:text-red-200';
-                                  return 'text-purple-800 dark:text-purple-200';
-                                };
-                                
-                                const getGradeIcon = (grade: string) => {
-                                  if (grade === 'EXCELLENT') return '🌟';
-                                  if (grade === 'GOOD') return '✅';
-                                  if (grade === 'NORMAL') return '📝';
-                                  if (grade === 'POOR') return '❌';
-                                  return '📝';
-                                };
-                                
-                                return (
-                                  <div key={key} className={`border-l-4 ${getScoreColor(criteria.scoreLevel)} pl-4 py-4 rounded-r-lg`}>
-                                    {/* 기준 */}
-                                    <div className="mb-3">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-lg">{getGradeIcon(criteria.grade)}</span>
-                                        <h6 className="text-sm font-semibold text-purple-800 dark:text-purple-200">
-                                          {criteria.criteria === 'motivation' ? '지원 동기' :
-                                           criteria.criteria === 'relevance' ? '직무 연관성' :
-                                           criteria.criteria === 'specificity' ? '구체성' :
-                                           criteria.criteria === 'passion' ? '열정 및 목표' :
-                                           criteria.criteria === 'experience' ? '경험 및 역량' :
-                                           criteria.criteria === 'technical' ? '기술적 역량' :
-                                           criteria.criteria === 'achievement' ? '성과 및 결과' :
-                                           criteria.criteria === 'teamwork' ? '협업 및 소통' :
-                                           criteria.criteria === '요약 분석' ? '요약 분석' : criteria.criteria}
+                              {Object.entries(essayAnalysis.evaluationCriteria).map(([key, criteria]) => (
+                                <div key={key} className="border-l-3 border-purple-300 dark:border-purple-600 pl-3">
+                                  <div className="mb-2">
+                                    <h6 className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
+                                      {key === 'motivation' ? '지원 동기' :
+                                       key === 'relevance' ? '직무 연관성' :
+                                       key === 'specificity' ? '구체성' :
+                                       key === 'passion' ? '열정 및 목표' :
+                                       key === 'experience' ? '경험 및 역량' :
+                                       key === 'technical' ? '기술적 역량' :
+                                       key === 'achievement' ? '성과 및 결과' :
+                                       key === 'teamwork' ? '협업 및 소통' : key}
                                     </h6>
                                   </div>
-                                    </div>
-                                    
-                                    {/* 이유 */}
-                                    <div className="mb-3">
-                                      <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">평가 이유</div>
-                                      <p className={`text-sm ${getTextColor(criteria.scoreLevel)} leading-relaxed`}>
-                                        {criteria.reason}
+                                  <p className="text-sm text-purple-700 dark:text-purple-300 leading-relaxed">
+                                    {criteria.feedback}
                                   </p>
                                 </div>
-                                    
-                                    {/* 해당 내용 */}
-                                    <div>
-                                      <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">해당 내용</div>
-                                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-2 rounded">
-                                        {criteria.content}
-                                      </p>
+                              ))}
                             </div>
                           </div>
-                                );
-                              })}
-                          </div>
-                          </div>
 
+                          {/* 개선 제안 */}
+                          <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                            <h5 className="font-medium text-orange-900 dark:text-orange-300 mb-3 flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4" />
+                              개선 제안
+                            </h5>
+                            <ul className="space-y-2">
+                              {essayAnalysis.suggestions.map((suggestion, index) => (
+                                <li key={index} className="text-sm text-orange-800 dark:text-orange-200 flex items-start gap-2">
+                                  <span className="text-orange-600 dark:text-orange-400 mt-1">•</span>
+                                  <span>{suggestion}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
                       )}
 
@@ -1456,6 +1226,21 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                             </ul>
                           </div>
 
+                          {/* 핵심 인사이트 */}
+                          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                            <h5 className="font-medium text-blue-900 dark:text-blue-300 mb-3 flex items-center gap-2">
+                              <Lightbulb className="w-4 h-4" />
+                              핵심 인사이트
+                            </h5>
+                            <ul className="space-y-2">
+                              {aiAnalysis.keyInsights.map((insight, index) => (
+                                <li key={index} className="text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                                  <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
+                                  <span>{insight}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
 
                           {/* AI 추천 결과 */}
                           <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
@@ -1469,7 +1254,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                   {aiAnalysis.recommendation}
                                 </div>
                                 <div className="text-sm text-purple-700 dark:text-purple-400">
-                                  신뢰도: {Math.round(aiAnalysis.confidenceLevel * 100)}%
+                                  신뢰도: {aiAnalysis.confidenceLevel}%
                                 </div>
                               </div>
                               <div className="w-16 h-16 relative">
@@ -1489,12 +1274,12 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                                     fill="none"
                                     stroke="rgb(124 58 237)"
                                     strokeWidth="3"
-                                    strokeDasharray={`${aiAnalysis.confidenceLevel * 100}, 100`}
+                                    strokeDasharray={`${aiAnalysis.confidenceLevel}, 100`}
                                   />
                                 </svg>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                   <span className="text-xs font-medium text-purple-900 dark:text-purple-300">
-                                    {Math.round(aiAnalysis.confidenceLevel * 100)}%
+                                    {aiAnalysis.confidenceLevel}%
                                   </span>
                                 </div>
                               </div>
@@ -1533,7 +1318,6 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           variant={getCurrentStatus(selectedApplicant, selectedApplicantData?.status || '') === 'passed' ? 'default' : 'outline'}
                           onClick={() => handleStatusChange('passed')}
                           className="h-8"
-                          disabled={evaluationMutation.isPending}
                         >
                           <CheckCircle className="w-3 h-3 mr-1" />
                           합격
@@ -1543,7 +1327,6 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           variant={getCurrentStatus(selectedApplicant, selectedApplicantData?.status || '') === 'failed' ? 'default' : 'outline'}
                           onClick={() => handleStatusChange('failed')}
                           className="h-8"
-                          disabled={evaluationMutation.isPending}
                         >
                           <XCircle className="w-3 h-3 mr-1" />
                           불합격
@@ -1553,7 +1336,6 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                           variant={getCurrentStatus(selectedApplicant, selectedApplicantData?.status || '') === 'pending' ? 'default' : 'outline'}
                           onClick={() => handleStatusChange('pending')}
                           className="h-8"
-                          disabled={evaluationMutation.isPending}
                         >
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           보류

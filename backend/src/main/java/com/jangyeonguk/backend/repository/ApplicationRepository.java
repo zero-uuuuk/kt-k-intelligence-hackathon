@@ -2,6 +2,7 @@ package com.jangyeonguk.backend.repository;
 
 import com.jangyeonguk.backend.domain.application.Applicant;
 import com.jangyeonguk.backend.domain.application.Application;
+import com.jangyeonguk.backend.domain.application.ApplicationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -19,4 +20,10 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     // 추가된 메서드
     Optional<Application> findByApplicantEmailAndJobPostingId(String applicantEmail, Long jobPostingId);
+    
+    // 공고별 지원서 수 조회
+    long countByJobPostingId(Long jobPostingId);
+    
+    // 공고별 특정 상태의 지원서 수 조회
+    long countByJobPostingIdAndStatusIn(Long jobPostingId, List<ApplicationStatus> statuses);
 }

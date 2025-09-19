@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
-import { useJobPostingMutation } from '../hooks/useApi';
+import { useJobPostingMutation, useJobPosting } from '../hooks/useApi';
 import { 
   JobPostingCreateRequestDto,
   EmploymentType,
@@ -28,7 +28,7 @@ interface ResumeField {
   name: string;
   type: 'text' | 'select' | 'number' | 'date' | 'file';
   required: boolean;
-  options?: string[];
+  options?: { value: string; label: string }[];
 }
 
 interface CoverLetterQuestion {
@@ -45,7 +45,7 @@ interface EvaluationCriteriaItem {
   criteria: {
     excellent: { score: number; description: string };
     good: { score: number; description: string };
-    fair: { score: number; description: string };
+    normal: { score: number; description: string };
     poor: { score: number; description: string };
   };
 }
@@ -56,7 +56,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
   evaluationDeadline?: string; // 평가 마감일 추가
 }
 
@@ -72,7 +72,30 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
   // API 연동
   const { createMutation, updateMutation } = useJobPostingMutation();
   
-  // 수정 모드에서 기존 데이터를 파싱하는 함수
+  // 수정 모드일 때 실제 API 데이터 가져오기
+  const { data: jobPostingData, isLoading: isLoadingJobPosting } = useJobPosting(
+    isEditMode && editingWorkspace ? parseInt(editingWorkspace.id) : 0
+  );
+  
+  // API 데이터를 파싱하는 함수
+  const parseApiData = (data: any) => {
+    return {
+      title: data.title || "",
+      description: data.description || "",
+      team: data.teamDepartment || "",
+      position: data.jobRole || "frontend",
+      employmentType: data.employmentType || "FULL_TIME",
+      startDate: data.applicationStartDate || "",
+      endDate: data.applicationEndDate || "",
+      evaluationDeadline: data.evaluationEndDate || "",
+      location: "",
+      experience: data.experienceRequirements || "",
+      education: data.educationRequirements || "",
+      skills: data.requiredSkills || ""
+    };
+  };
+
+  // 수정 모드에서 기존 데이터를 파싱하는 함수 (fallback)
   const parseWorkspaceData = (workspace: WorkspaceCard) => {
     // period를 파싱하여 날짜 추출 (25.09.01 - 25.09.15 형태)
     const [startDateStr, endDateStr] = workspace.period.split(' - ');
@@ -145,7 +168,302 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
     };
   });
 
-  // 이력서 필드 (이름과 이메일은 고정으로 포함)
+  // API 데이터가 로드되면 폼 데이터 업데이트
+  useEffect(() => {
+    if (isEditMode && jobPostingData) {
+      const parsedData = parseApiData(jobPostingData);
+      setBasicInfo(parsedData);
+      
+      // 이력서 항목 데이터 설정
+      if (jobPostingData.resumeItems) {
+        setResumeFields(jobPostingData.resumeItems.map((item: any) => ({
+          id: item.id.toString(),
+          name: item.name,
+          type: item.type.toLowerCase() as any,
+          required: item.isRequired,
+          maxScore: item.maxScore
+        })));
+
+        // 이력서 평가 기준 데이터 설정
+        const resumeCriteriaData: EvaluationCriteriaItem[] = [];
+        jobPostingData.resumeItems.forEach((item: any) => {
+          if (item.criteria && item.criteria.length > 0) {
+            const criteria = item.criteria;
+            const evaluationCriteria: EvaluationCriteriaItem = {
+              id: item.id.toString(),
+              name: item.name,
+              maxScore: item.maxScore || 0,
+              criteria: {
+                excellent: { 
+                  score: criteria.find((c: any) => c.grade === 'EXCELLENT')?.scorePerGrade || 0,
+                  description: criteria.find((c: any) => c.grade === 'EXCELLENT')?.description || ""
+                },
+                good: { 
+                  score: criteria.find((c: any) => c.grade === 'GOOD')?.scorePerGrade || 0,
+                  description: criteria.find((c: any) => c.grade === 'GOOD')?.description || ""
+                },
+                normal: { 
+                  score: criteria.find((c: any) => c.grade === 'NORMAL')?.scorePerGrade || 0,
+                  description: criteria.find((c: any) => c.grade === 'NORMAL')?.description || ""
+                },
+                poor: { 
+                  score: criteria.find((c: any) => c.grade === 'POOR')?.scorePerGrade || 0,
+                  description: criteria.find((c: any) => c.grade === 'POOR')?.description || ""
+                },
+              }
+            };
+            resumeCriteriaData.push(evaluationCriteria);
+          }
+        });
+        setResumeEvaluationCriteria(resumeCriteriaData);
+      }
+      
+      // 자기소개서 질문 데이터 설정
+      if (jobPostingData.coverLetterQuestions) {
+        setCoverLetterQuestions(jobPostingData.coverLetterQuestions.map((question: any) => ({
+          id: question.id.toString(),
+          question: question.content,
+          maxLength: question.maxCharacters,
+          required: question.isRequired
+        })));
+
+        // 자기소개서 평가 기준 데이터 설정
+        const essayCriteriaData: EvaluationCriteriaItem[] = [];
+        jobPostingData.coverLetterQuestions.forEach((question: any) => {
+          if (question.criteria && question.criteria.length > 0) {
+            question.criteria.forEach((criterion: any) => {
+              if (criterion.details && criterion.details.length > 0) {
+                const evaluationCriteria: EvaluationCriteriaItem = {
+                  id: question.id.toString(),
+                  name: criterion.name || "평가 기준",
+                  maxScore: Math.max(...criterion.details.map((d: any) => d.scorePerGrade || 0)),
+                  criteria: {
+                    excellent: { 
+                      score: criterion.details.find((d: any) => d.grade === 'EXCELLENT')?.scorePerGrade || 0,
+                      description: criterion.details.find((d: any) => d.grade === 'EXCELLENT')?.description || ""
+                    },
+                    good: { 
+                      score: criterion.details.find((d: any) => d.grade === 'GOOD')?.scorePerGrade || 0,
+                      description: criterion.details.find((d: any) => d.grade === 'GOOD')?.description || ""
+                    },
+                    normal: { 
+                      score: criterion.details.find((d: any) => d.grade === 'NORMAL')?.scorePerGrade || 0,
+                      description: criterion.details.find((d: any) => d.grade === 'NORMAL')?.description || ""
+                    },
+                    poor: { 
+                      score: criterion.details.find((d: any) => d.grade === 'POOR')?.scorePerGrade || 0,
+                      description: criterion.details.find((d: any) => d.grade === 'POOR')?.description || ""
+                    },
+                  }
+                };
+                essayCriteriaData.push(evaluationCriteria);
+              }
+            });
+          }
+        });
+        setEssayEvaluationCriteria(essayCriteriaData);
+      }
+      
+      // 평가 기준 데이터 설정
+      setEvaluationCriteria({
+        totalScore: jobPostingData.totalScore || 100,
+        resumeScoreWeight: 60, // 기본값 사용
+        coverLetterScoreWeight: 40, // 기본값 사용
+        passingScore: jobPostingData.passingScore || 60,
+        autoEvaluation: jobPostingData.aiAutomaticEvaluation || true,
+        manualReview: jobPostingData.manualReview || true
+      });
+      
+      // 채용공고 상태 설정
+      setPostingStatus(jobPostingData.postingStatus || "SCHEDULED");
+    }
+  }, [isEditMode, jobPostingData]);
+
+  // 학력 필드에 대한 기본 평가 기준 설정
+  useEffect(() => {
+    const educationCriteria: EvaluationCriteriaItem = {
+      id: "education",
+      name: "학력",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 10, 
+          description: "SKY" 
+        },
+        good: { 
+          score: 8, 
+          description: "서성한" 
+        },
+        normal: { 
+          score: 6, 
+          description: "중경외시·지방국립" 
+        },
+        poor: { 
+          score: 4, 
+          description: "건동홍세·지방주요사립" 
+        }
+      }
+    };
+
+    const gradeCriteria: EvaluationCriteriaItem = {
+      id: "grade",
+      name: "학점",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 10, 
+          description: "인문 ≥ 4.2 / 이공 ≥ 4.0"
+        },
+        good: { 
+          score: 8, 
+          description: "인문 ≥ 3.8 / 이공 ≥ 3.5"
+        },
+        normal: { 
+          score: 6, 
+          description: "인문 ≥ 3.5 / 이공 ≥ 3.2"
+        },
+        poor: { 
+          score: 4, 
+          description: "인문 < 3.5 / 이공 < 3.2" 
+        }
+      }
+    };
+
+    const certificateCriteria: EvaluationCriteriaItem = {
+      id: "certificate",
+      name: "자격증",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 5, 
+          description: "국가기술·전문자격" 
+        },
+        good: { 
+          score: 3, 
+          description: "국가공인 일반 자격" 
+        },
+        normal: { 
+          score: 2, 
+          description: "민간 자격증" 
+        },
+        poor: { 
+          score: 0, 
+          description: "없음" 
+        }
+      }
+    };
+
+    const languageCriteria: EvaluationCriteriaItem = {
+      id: "language",
+      name: "어학",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 10, 
+          description: "TOEIC 950 / OPIc AL" 
+        },
+        good: { 
+          score: 8, 
+          description: "TOEIC 900 / OPIc IH" 
+        },
+        normal: { 
+          score: 6, 
+          description: "TOEIC 850 / OPIc IM3" 
+        },
+        poor: { 
+          score: 4, 
+          description: "TOEIC 800 / OPIc IM2" 
+        }
+      }
+    };
+
+    const awardCriteria: EvaluationCriteriaItem = {
+      id: "award",
+      name: "수상경력",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 10, 
+          description: "KT/정부·전국 규모" 
+        },
+        good: { 
+          score: 8, 
+          description: "대기업·전문협회" 
+        },
+        normal: { 
+          score: 6, 
+          description: "교내" 
+        },
+        poor: { 
+          score: 4, 
+          description: "동아리·지역" 
+        }
+      }
+    };
+
+    const experienceCriteria: EvaluationCriteriaItem = {
+      id: "experience",
+      name: "경력",
+      maxScore: 25,
+      criteria: {
+        excellent: { 
+          score: 25, 
+          description: "12" 
+        },
+        good: { 
+          score: 20, 
+          description: "6" 
+        },
+        normal: { 
+          score: 12, 
+          description: "3" 
+        },
+        poor: { 
+          score: 8, 
+          description: "1" 
+        }
+      }
+    };
+
+    const volunteerCriteria: EvaluationCriteriaItem = {
+      id: "volunteer",
+      name: "봉사시간",
+      maxScore: 10,
+      criteria: {
+        excellent: { 
+          score: 10, 
+          description: "100" 
+        },
+        good: { 
+          score: 6, 
+          description: "50" 
+        },
+        normal: { 
+          score: 4, 
+          description: "20" 
+        },
+        poor: { 
+          score: 2, 
+          description: "1" 
+        }
+      }
+    };
+
+    setResumeEvaluationCriteria(prev => {
+      const filtered = prev.filter(criteria => 
+        criteria.id !== "education" && 
+        criteria.id !== "grade" && 
+        criteria.id !== "certificate" && 
+        criteria.id !== "language" &&
+        criteria.id !== "award" &&
+        criteria.id !== "experience" &&
+        criteria.id !== "volunteer"
+      );
+      return [...filtered, educationCriteria, gradeCriteria, certificateCriteria, languageCriteria, awardCriteria, experienceCriteria, volunteerCriteria];
+    });
+  }, []);
+
+  // 이력서 필드 (이름, 이메일, 학력은 고정으로 포함)
   const [resumeFields, setResumeFields] = useState<ResumeField[]>([
     {
       id: "name",
@@ -158,6 +476,48 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       name: "이메일",
       type: "text",
       required: true
+    },
+    {
+      id: "education",
+      name: "학력",
+      type: "text",
+      required: true
+    },
+    {
+      id: "grade",
+      name: "학점",
+      type: "text",
+      required: true
+    },
+    {
+      id: "certificate",
+      name: "자격증",
+      type: "text",
+      required: true
+    },
+    {
+      id: "language",
+      name: "어학",
+      type: "text",
+      required: true
+    },
+    {
+      id: "award",
+      name: "수상경력",
+      type: "text",
+      required: true
+    },
+    {
+      id: "experience",
+      name: "경력",
+      type: "text",
+      required: true
+    },
+    {
+      id: "volunteer",
+      name: "봉사시간",
+      type: "text",
+      required: false
     }
   ]);
 
@@ -187,6 +547,9 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
     manualReview: true
   });
 
+  // 채용공고 상태 (수정 모드에서만 사용)
+  const [postingStatus, setPostingStatus] = useState("SCHEDULED");
+
   // 파일 업로드 상태
   const [uploadedFiles, setUploadedFiles] = useState<{
     evaluationCriteria?: File;
@@ -215,17 +578,17 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
           scorePerGrade: fieldCriteria.criteria.excellent.score
         },
         {
-          grade: Grade.NORMAL,
+          grade: Grade.GOOD,
           description: fieldCriteria.criteria.good.description,
           scorePerGrade: fieldCriteria.criteria.good.score
         },
         {
-          grade: Grade.INSUFFICIENT,
-          description: fieldCriteria.criteria.fair.description,
-          scorePerGrade: fieldCriteria.criteria.fair.score
+          grade: Grade.NORMAL,
+          description: fieldCriteria.criteria.normal.description,
+          scorePerGrade: fieldCriteria.criteria.normal.score
         },
         {
-          grade: Grade.LACK,
+          grade: Grade.POOR,
           description: fieldCriteria.criteria.poor.description,
           scorePerGrade: fieldCriteria.criteria.poor.score
         }
@@ -263,12 +626,12 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
               scorePerGrade: questionCriteria.criteria.good.score
             },
             {
-              grade: Grade.INSUFFICIENT,
-              description: questionCriteria.criteria.fair.description,
-              scorePerGrade: questionCriteria.criteria.fair.score
+              grade: Grade.NORMAL,
+              description: questionCriteria.criteria.normal.description,
+              scorePerGrade: questionCriteria.criteria.normal.score
             },
             {
-              grade: Grade.LACK,
+              grade: Grade.POOR,
               description: questionCriteria.criteria.poor.description,
               scorePerGrade: questionCriteria.criteria.poor.score
             }
@@ -334,7 +697,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
         criteria: {
           excellent: { score: 10, description: "우수한 수준" },
           good: { score: 7, description: "보통 수준" },
-          fair: { score: 4, description: "미흡한 수준" },
+          normal: { score: 4, description: "미흡한 수준" },
           poor: { score: 1, description: "부족한 수준" }
         }
       };
@@ -356,8 +719,8 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
   };
 
   const removeResumeField = (id: string) => {
-    // 이름과 이메일 필드는 삭제할 수 없음
-    if (id === "name" || id === "email") {
+    // 이름, 이메일, 학력, 학점, 자격증, 어학, 수상경력, 경력, 봉사시간 필드는 삭제할 수 없음
+    if (id === "name" || id === "email" || id === "education" || id === "grade" || id === "certificate" || id === "language" || id === "award" || id === "experience" || id === "volunteer") {
       return;
     }
     setResumeFields(resumeFields.filter(f => f.id !== id));
@@ -391,7 +754,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       criteria: {
         excellent: { score: 25, description: "" },
         good: { score: 18, description: "" },
-        fair: { score: 12, description: "" },
+        normal: { score: 12, description: "" },
         poor: { score: 6, description: "" }
       }
     };
@@ -443,7 +806,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       criteria: {
         excellent: { score: 10, description: "" },
         good: { score: 7, description: "" },
-        fair: { score: 4, description: "" },
+        normal: { score: 4, description: "" },
         poor: { score: 0, description: "" }
       }
     };
@@ -463,7 +826,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       criteria: {
         excellent: { score: 25, description: "" },
         good: { score: 19, description: "" },
-        fair: { score: 14, description: "" },
+        normal: { score: 14, description: "" },
         poor: { score: 9, description: "" }
       }
     };
@@ -487,17 +850,17 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
           scorePerGrade: fieldCriteria.criteria.excellent.score
         },
         {
-          grade: Grade.NORMAL,
+          grade: Grade.GOOD,
           description: fieldCriteria.criteria.good.description,
           scorePerGrade: fieldCriteria.criteria.good.score
         },
         {
-          grade: Grade.INSUFFICIENT,
-          description: fieldCriteria.criteria.fair.description,
-          scorePerGrade: fieldCriteria.criteria.fair.score
+          grade: Grade.NORMAL,
+          description: fieldCriteria.criteria.normal.description,
+          scorePerGrade: fieldCriteria.criteria.normal.score
         },
         {
-          grade: Grade.LACK,
+          grade: Grade.POOR,
           description: fieldCriteria.criteria.poor.description,
           scorePerGrade: fieldCriteria.criteria.poor.score
         }
@@ -532,12 +895,12 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
               scorePerGrade: questionCriteria.criteria.good.score
             },
             {
-              grade: Grade.INSUFFICIENT,
-              description: questionCriteria.criteria.fair.description,
-              scorePerGrade: questionCriteria.criteria.fair.score
+              grade: Grade.NORMAL,
+              description: questionCriteria.criteria.normal.description,
+              scorePerGrade: questionCriteria.criteria.normal.score
             },
             {
-              grade: Grade.LACK,
+              grade: Grade.POOR,
               description: questionCriteria.criteria.poor.description,
               scorePerGrade: questionCriteria.criteria.poor.score
             }
@@ -571,7 +934,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       passingScore: evaluationCriteria.passingScore,
       aiAutomaticEvaluation: evaluationCriteria.autoEvaluation,
       manualReview: evaluationCriteria.manualReview,
-      postingStatus: PostingStatus.SCHEDULED,
+      postingStatus: postingStatus as PostingStatus,
       resumeItems,
       coverLetterQuestions: coverLetterQuestionsData
     };
@@ -579,6 +942,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
 
   const handleSave = async () => {
     console.log('저장 버튼 클릭됨');
+    console.log('현재 상태:', postingStatus);
     
     // 기본 검증
     if (!canSave) {
@@ -593,6 +957,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
       console.log('데이터 변환 시작');
       const jobPostingData = convertToJobPostingCreateRequest();
       console.log('변환된 데이터:', jobPostingData);
+      console.log('포함된 상태:', jobPostingData.postingStatus);
 
       if (isEditMode && editingWorkspace) {
         console.log('수정 모드로 API 호출 시작');
@@ -624,6 +989,32 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
   const canSave = basicInfo.title && basicInfo.team && basicInfo.position && basicInfo.employmentType && 
                   basicInfo.startDate && basicInfo.endDate && resumeFields.length > 0 && 
                   coverLetterQuestions.length > 0;
+
+  // 로딩 상태 처리
+  if (isEditMode && isLoadingJobPosting) {
+    return (
+      <div className="h-screen bg-white flex flex-col">
+        <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              뒤로가기
+            </Button>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">채용공고 수정</h1>
+              <p className="text-sm text-gray-500">기존 채용공고 정보를 수정합니다</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">채용공고 정보를 불러오는 중...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-white flex flex-col">
@@ -779,6 +1170,45 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                     </p>
                   </div>
 
+                  {/* 채용공고 상태 변경 (수정 모드에서만 표시) */}
+                  {isEditMode && (
+                    <div className="border-t pt-6">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Settings className="w-5 h-5 text-orange-600" />
+                        <h3 className="text-lg font-semibold text-gray-900">채용공고 상태 관리</h3>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <Label htmlFor="postingStatus" className="text-sm font-medium text-orange-800">
+                              현재 상태
+                            </Label>
+                            <Select value={postingStatus} onValueChange={setPostingStatus}>
+                              <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="상태를 선택하세요" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="SCHEDULED">모집 예정</SelectItem>
+                                <SelectItem value="IN_PROGRESS">모집중</SelectItem>
+                                <SelectItem value="CLOSED">모집 마감</SelectItem>
+                                <SelectItem value="EVALUATION_COMPLETE">평가 완료</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="text-sm text-orange-700">
+                            <p className="font-medium">상태 변경 안내</p>
+                            <p className="text-xs mt-1">
+                              • 모집 예정: 아직 모집이 시작되지 않음<br/>
+                              • 모집중: 현재 지원을 받고 있음<br/>
+                              • 모집 마감: 지원 마감, 평가 진행 중<br/>
+                              • 평가 완료: 모든 평가가 완료됨
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <Label htmlFor="description">공고 설명</Label>
                     <Textarea
@@ -847,7 +1277,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                     <div key={field.id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-medium text-gray-900">항목 {index + 1}</h4>
-                        {resumeFields.length > 3 && field.id !== "name" && field.id !== "email" && (
+                        {resumeFields.length > 3 && field.id !== "name" && field.id !== "email" && field.id !== "education" && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -866,7 +1296,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                             value={field.name}
                             onChange={(e) => updateResumeField(field.id, { name: e.target.value })}
                             placeholder="예: 학점"
-                            disabled={field.id === "name" || field.id === "email"}
+                            disabled={field.id === "name" || field.id === "email" || field.id === "education"}
                           />
                         </div>
                         <div>
@@ -874,7 +1304,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                           <Select 
                             value={field.type} 
                             onValueChange={(value: any) => updateResumeField(field.id, { type: value })}
-                            disabled={field.id === "name" || field.id === "email"}
+                            disabled={field.id === "name" || field.id === "email" || field.id === "education"}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -893,7 +1323,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                             <Switch
                               checked={field.required}
                               onCheckedChange={(checked) => updateResumeField(field.id, { required: checked })}
-                              disabled={field.id === "name" || field.id === "email"}
+                              disabled={field.id === "name" || field.id === "email" || field.id === "education"}
                             />
                             <Label className="text-sm">필수</Label>
                           </div>
@@ -1255,7 +1685,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                           ...updatedCriteria[maxScoreIndex].criteria,
                                           excellent: { ...updatedCriteria[maxScoreIndex].criteria.excellent, score: newMaxScore },
                                           good: { ...updatedCriteria[maxScoreIndex].criteria.good, score: Math.round(newMaxScore * 0.7) },
-                                          fair: { ...updatedCriteria[maxScoreIndex].criteria.fair, score: Math.round(newMaxScore * 0.4) },
+                                          normal: { ...updatedCriteria[maxScoreIndex].criteria.normal, score: Math.round(newMaxScore * 0.4) },
                                           poor: { ...updatedCriteria[maxScoreIndex].criteria.poor, score: 0 }
                                         }
                                       };
@@ -1285,7 +1715,19 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                         return (
                           <div key={field.id} className="border border-gray-200 rounded-lg p-4">
                             <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
                               <h4 className="font-medium text-gray-900">{field.name}</h4>
+                                {(field.id === "education" || field.id === "grade" || field.id === "certificate" || field.id === "language" || field.id === "award" || field.id === "experience" || field.id === "volunteer") && (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                    고정 항목
+                                  </span>
+                                )}
+                                {(field.id === "name" || field.id === "email") && (
+                                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                    기본 정보
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2">
                                 <Label className="text-sm text-gray-600">최대 배점:</Label>
                               <Input
@@ -1300,7 +1742,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                         ...fieldCriteria.criteria,
                                         excellent: { ...fieldCriteria.criteria.excellent, score: maxScore },
                                         good: { ...fieldCriteria.criteria.good, score: Math.round(maxScore * 0.7) },
-                                        fair: { ...fieldCriteria.criteria.fair, score: Math.round(maxScore * 0.4) },
+                                        normal: { ...fieldCriteria.criteria.normal, score: Math.round(maxScore * 0.4) },
                                         poor: { ...fieldCriteria.criteria.poor, score: 0 }
                                     }
                                   });
@@ -1311,7 +1753,85 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                               />
                                 <span className="text-sm text-gray-500">점</span>
                             </div>
-                          </div>
+                            </div>
+                            {(field.id === "name" || field.id === "email") && (
+                              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                <p className="text-sm text-gray-600">
+                                  기본 정보 항목으로 평가 기준 설정이 필요하지 않습니다.
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "education" && (
+                              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-sm text-blue-800">
+                                  <strong>학력 평가 기준:</strong> SKY(10점) → 서성한(8점) → 중경외시·지방국립(6점) → 건동홍세·지방주요사립(4점)
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">
+                                  ※ 학력 구분과 설명은 고정되어 있으며, 점수만 수정 가능합니다.
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "grade" && (
+                              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <p className="text-sm text-green-800">
+                                  <strong>학점 평가 기준:</strong> 인문 4.2이상 / 이공 4.0이상(10점) → 인문 3.8이상 / 이공 3.5이상(8점) → 인문 3.5이상 / 이공 3.2이상(6점) → 인문 3.5미만 / 이공 3.2미만(4점)
+                                </p>
+                                <p className="text-xs text-green-600 mt-1">
+                                  ※ 학점 구분과 설명은 고정되어 있으며, 점수만 수정 가능합니다. (숫자 부분은 추후 개별 수정 가능 예정)
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "certificate" && (
+                              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                <p className="text-sm text-purple-800">
+                                  <strong>자격증 평가 기준:</strong> 국가기술·전문자격(5점) → 국가공인 일반 자격(3점) → 민간 자격증(2점) → 없음(0점)
+                                </p>
+                                <p className="text-xs text-purple-600 mt-1">
+                                  ※ 자격증 구분과 설명은 고정되어 있으며, 점수만 수정 가능합니다.
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "language" && (
+                              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                <p className="text-sm text-orange-800">
+                                  <strong>어학 평가 기준:</strong> TOEIC 950 / OPIc AL(10점) → TOEIC 900 / OPIc IH(8점) → TOEIC 850 / OPIc IM3(6점) → TOEIC 800 / OPIc IM2(4점)
+                                </p>
+                                <p className="text-xs text-orange-600 mt-1">
+                                  ※ 어학 점수 기준과 설명은 고정되어 있으며, 점수만 수정 가능합니다.
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "award" && (
+                              <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <p className="text-sm text-indigo-800">
+                                  <strong>수상경력 평가 기준:</strong> KT/정부·전국 규모(10점) → 대기업·전문협회(8점) → 교내(6점) → 동아리·지역(4점)
+                                </p>
+                                <p className="text-xs text-indigo-600 mt-1">
+                                  ※ 수상경력 구분과 설명은 고정되어 있으며, 점수만 수정 가능합니다.
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "experience" && (
+                              <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                                <p className="text-sm text-teal-800">
+                                  <strong>경력 평가 기준:</strong> 12개월 이상(25점) → 6개월 이상(20점) → 3개월 이상(12점) → 1개월 이상(8점)
+                                </p>
+                                <p className="text-xs text-teal-600 mt-1">
+                                  ※ 경력 기간과 설명은 고정되어 있으며, 점수만 수정 가능합니다. (숫자 부분은 추후 개별 수정 가능 예정)
+                                </p>
+                              </div>
+                            )}
+                            {field.id === "volunteer" && (
+                              <div className="mb-4 p-3 bg-pink-50 border border-pink-200 rounded-lg">
+                                <p className="text-sm text-pink-800">
+                                  <strong>봉사시간 평가 기준:</strong> 100시간 이상(10점) → 50시간 이상(6점) → 20시간 이상(4점) → 1시간 이상(2점)
+                                </p>
+                                <p className="text-xs text-pink-600 mt-1">
+                                  ※ 봉사시간 기준과 설명은 고정되어 있으며, 점수만 수정 가능합니다. (숫자 부분은 추후 개별 수정 가능 예정)
+                                </p>
+                              </div>
+                            )}
+                            {!(field.id === "name" || field.id === "email") && (
                             <div className="grid grid-cols-1 gap-3">
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -1350,6 +1870,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                 rows={2}
                                   className="resize-none text-sm"
                                 placeholder="우수한 수준의 기준을 입력하세요"
+                                disabled={field.id === "education" || field.id === "grade" || field.id === "certificate" || field.id === "language" || field.id === "award" || field.id === "experience" || field.id === "volunteer"}
                               />
                             </div>
                             <div className="space-y-2">
@@ -1389,6 +1910,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                 rows={2}
                                   className="resize-none text-sm"
                                 placeholder="보통 수준의 기준을 입력하세요"
+                                disabled={field.id === "education" || field.id === "grade" || field.id === "certificate" || field.id === "language" || field.id === "award" || field.id === "experience" || field.id === "volunteer"}
                               />
                             </div>
                             <div className="space-y-2">
@@ -1397,13 +1919,13 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                   <div className="flex items-center gap-2">
                                     <Input
                                       type="number"
-                                      value={fieldCriteria?.criteria.fair.score || 0}
+                                      value={fieldCriteria?.criteria.normal.score || 0}
                                       onChange={(e) => {
                                         if (!fieldCriteria) return;
                                         updateResumeEvaluationCriteria(fieldCriteria.id, {
                                   criteria: {
                                             ...fieldCriteria.criteria,
-                                            fair: { ...fieldCriteria.criteria.fair, score: parseInt(e.target.value) || 0 }
+                                            normal: { ...fieldCriteria.criteria.normal, score: parseInt(e.target.value) || 0 }
                                           }
                                         });
                                       }}
@@ -1415,19 +1937,20 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                             </div>
                                 </div>
                               <Textarea
-                                  value={fieldCriteria?.criteria.fair.description || ""}
+                                  value={fieldCriteria?.criteria.normal.description || ""}
                                   onChange={(e) => {
                                     if (!fieldCriteria) return;
                                     updateResumeEvaluationCriteria(fieldCriteria.id, {
                                   criteria: {
                                         ...fieldCriteria.criteria,
-                                        fair: { ...fieldCriteria.criteria.fair, description: e.target.value }
+                                        normal: { ...fieldCriteria.criteria.normal, description: e.target.value }
                                   }
                                     });
                                   }}
                                 rows={2}
                                   className="resize-none text-sm"
                                 placeholder="미흡한 수준의 기준을 입력하세요"
+                                disabled={field.id === "education" || field.id === "grade" || field.id === "certificate" || field.id === "language" || field.id === "award" || field.id === "experience" || field.id === "volunteer"}
                               />
                             </div>
                             <div className="space-y-2">
@@ -1467,9 +1990,11 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                 rows={2}
                                   className="resize-none text-sm"
                                 placeholder="부족한 수준의 기준을 입력하세요"
+                                disabled={field.id === "education" || field.id === "grade" || field.id === "certificate" || field.id === "language" || field.id === "award" || field.id === "experience" || field.id === "volunteer"}
                               />
                             </div>
                           </div>
+                            )}
                         </div>
                         );
                       })
@@ -1522,7 +2047,7 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                                       criteria: {
                                         excellent: { score: 25, description: "" },
                                         good: { score: 18, description: "" },
-                                        fair: { score: 12, description: "" },
+                                        normal: { score: 12, description: "" },
                                         poor: { score: 6, description: "" }
                                       }
                                     };
@@ -1625,13 +2150,13 @@ export function JobPostingForm({ onBack, editingWorkspace, isEditMode = false }:
                             <div className="space-y-2">
                                         <Label className="text-orange-700 font-medium text-sm">미흡 (C등급)</Label>
                               <Textarea
-                                          value={criteria.criteria.fair.description || ""}
+                                          value={criteria.criteria.normal.description || ""}
                                           onChange={(e) => {
                                             const updatedCriteria = {
                                               ...criteria,
                                   criteria: {
                                                 ...criteria.criteria,
-                                                fair: { ...criteria.criteria.fair, description: e.target.value }
+                                                normal: { ...criteria.criteria.normal, description: e.target.value }
                                               }
                                             };
                                             setEssayEvaluationCriteria(prev => 

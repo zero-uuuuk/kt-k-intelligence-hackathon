@@ -10,7 +10,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
   evaluationDeadline?: string; // 평가 마감일 추가
   publicLinkUrl?: string; // 공개 링크 URL 추가
 }
@@ -62,7 +62,9 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
         return 'bg-green-50 border-green-200';
       case 'scheduled':
         return 'bg-yellow-50 border-yellow-200';
-      case 'completed':
+      case 'recruitment-completed':
+        return 'bg-blue-50 border-blue-200';
+      case 'evaluation-completed':
         return 'bg-gray-50 border-gray-200';
       default:
         return 'bg-gray-50 border-gray-200';
@@ -75,7 +77,9 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
         return 'text-green-700';
       case 'scheduled':
         return 'text-yellow-700';
-      case 'completed':
+      case 'recruitment-completed':
+        return 'text-blue-700';
+      case 'evaluation-completed':
         return 'text-gray-700';
       default:
         return 'text-gray-700';
@@ -102,16 +106,10 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
           <span>{workspace.team}</span>
         </div>
         
-        {workspace.applicants && (
-          <div className="flex items-center gap-2 text-gray-600 text-xs">
-            <Users className="w-3 h-3" />
-            {workspace.id === "4" ? (
-              <span>지원자 {workspace.applicants}명 / 628명 평가 완료</span>
-            ) : (
-              <span>{workspace.applicants}명 지원중</span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-gray-600 text-xs">
+          <Users className="w-3 h-3" />
+          <span>{workspace.applicants || 0}명 지원중</span>
+        </div>
 
         {/* 서류 평가 마감일 표시 - 모든 공고에 표시 */}
         {workspace.evaluationDeadline && (
@@ -132,8 +130,10 @@ function WorkspaceCard({ workspace, onEdit }: WorkspaceCardProps) {
               });
               
               // 상태별로 다른 표시 방식
-              if (workspace.status === 'completed') {
+              if (workspace.status === 'evaluation-completed') {
                 return <span className="text-gray-600">{formattedDate} (평가완료)</span>;
+              } else if (workspace.status === 'recruitment-completed') {
+                return <span className="text-blue-600">{formattedDate} (모집마감)</span>;
               } else if (workspace.status === 'scheduled') {
                 return <span className="text-yellow-600">{formattedDate} (모집예정)</span>;
               } else {
@@ -199,7 +199,7 @@ export function WorkspaceManagement({
   // 동적으로 완료 상태를 업데이트
   const updatedWorkspaceData = workspaceData.map(workspace => {
     if (externalCompletedWorkspaces.includes(workspace.id)) {
-      return { ...workspace, status: 'completed' as const };
+      return { ...workspace, status: 'evaluation-completed' as const };
     }
     return workspace;
   });
@@ -207,15 +207,16 @@ export function WorkspaceManagement({
   const recruitingWorkspaces = updatedWorkspaceData.filter(w => w.status === 'recruiting');
   const scheduledWorkspaces = updatedWorkspaceData.filter(w => w.status === 'scheduled');
   
-  // 원래 완료된 워크스페이스 (모집 완료된 공고 섹션용)
-  const originallyCompletedWorkspaces = updatedWorkspaceData.filter(w => 
-    workspaceData.find(original => original.id === w.id)?.status === 'completed'
-  );
+  // 모집 완료된 워크스페이스 (모집 마감 상태)
+  const recruitmentCompletedWorkspaces = updatedWorkspaceData.filter(w => w.status === 'recruitment-completed');
   
-  // 최종 평가를 완료한 워크스페이스만 (지난 공고용)
-  const evaluationCompletedWorkspaces = updatedWorkspaceData.filter(w => 
-    externalCompletedWorkspaces.includes(w.id)
-  );
+  // 평가 완료된 워크스페이스 (지난 공고용)
+  const evaluationCompletedWorkspaces = updatedWorkspaceData.filter(w => w.status === 'evaluation-completed');
+
+  // 지원자 수 계산 함수
+  const getTotalApplicants = (workspaces: WorkspaceCard[]) => {
+    return workspaces.reduce((total, workspace) => total + (workspace.applicants || 0), 0);
+  };
 
   const handleNewJobPosting = () => {
     setEditingWorkspace(null);
@@ -257,7 +258,7 @@ export function WorkspaceManagement({
             className="text-gray-600 hover:text-gray-900 text-sm"
             onClick={() => setShowPastJobPostings(!showPastJobPostings)}
           >
-            {showPastJobPostings ? '현재 공고 보기' : '지난 공고 확인하기'}
+            {showPastJobPostings ? '현재 공고 보기' : '평가완료창'}
           </Button>
           <Button 
             className="bg-blue-600 hover:bg-blue-700 px-4 text-sm"
@@ -275,10 +276,12 @@ export function WorkspaceManagement({
       {/* Content */}
       <div className="flex-1 space-y-6 overflow-hidden">
         {showPastJobPostings ? (
-          /* Past Job Postings View - 오직 최종 평가를 완료한 공고만 표시 */
+          /* 평가완료창 - 평가완료된 공고만 표시 */
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-lg font-semibold text-gray-900">지난 공고</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {getTotalApplicants(evaluationCompletedWorkspaces)}명 평가완료
+              </h2>
               <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
             </div>
             {evaluationCompletedWorkspaces.length > 0 ? (
@@ -293,7 +296,7 @@ export function WorkspaceManagement({
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-gray-500 text-sm">평가를 완료한 공고가 없습니다.</p>
+                <p className="text-gray-500 text-sm">평가가 완료된 공고가 없습니다.</p>
               </div>
             )}
           </div>
@@ -334,15 +337,36 @@ export function WorkspaceManagement({
               </div>
             </div>
 
-            {/* Completed Section - 모집 완료된 공고 */}
-            {originallyCompletedWorkspaces.length > 0 && (
+            {/* Recruitment Completed Section - 모집 완료된 공고 */}
+            {recruitmentCompletedWorkspaces.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-lg font-semibold text-gray-900">모집 완료된 공고</h2>
-                  <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                  <h2 className="text-lg font-semibold text-gray-900">모집 완료</h2>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {originallyCompletedWorkspaces.map(workspace => (
+                  {recruitmentCompletedWorkspaces.map(workspace => (
+                    <WorkspaceCard 
+                      key={workspace.id} 
+                      workspace={workspace} 
+                      onEdit={handleEditWorkspace}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recruitment Completed Section - 모집완료된 공고 */}
+            {recruitmentCompletedWorkspaces.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    {getTotalApplicants(recruitmentCompletedWorkspaces)}명 모집완료
+                  </h2>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {recruitmentCompletedWorkspaces.map(workspace => (
                     <WorkspaceCard 
                       key={workspace.id} 
                       workspace={workspace} 

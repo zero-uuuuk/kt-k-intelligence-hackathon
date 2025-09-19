@@ -1,8 +1,9 @@
+import React from "react";
 import { Badge } from "./ui/badge";
 
 interface JobPosting {
   position: string;
-  status: "모집중" | "모집 예정" | "완료";
+  status: "모집중" | "모집 예정" | "모집완료" | "평가완료";
   workspaceId?: string;
 }
 
@@ -12,7 +13,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
 }
 
 interface ProgressSectionProps {
@@ -31,7 +32,12 @@ const statusConfig = {
     text: "text-yellow-700",
     border: "border-yellow-200"
   },
-  "완료": {
+  "모집완료": {
+    bg: "bg-blue-100",
+    text: "text-blue-700", 
+    border: "border-blue-200"
+  },
+  "평가완료": {
     bg: "bg-gray-100",
     text: "text-gray-700", 
     border: "border-gray-200"
@@ -58,36 +64,41 @@ function JobItem({ position, status, workspaceId, onClick }: JobPosting & { onCl
 }
 
 export function ProgressSection({ workspaceData = [], onItemClick }: ProgressSectionProps) {
-  // 워크스페이스 데이터를 JobPosting 형태로 변환
-  const jobPostings: JobPosting[] = workspaceData.map(workspace => {
-    // 직무명 추출 (team에서 마지막 부분)
-    const position = workspace.team.split(', ').pop() || workspace.title;
-    
-    let status: "모집중" | "모집 예정" | "완료";
-    switch (workspace.status) {
-      case "recruiting":
-        status = "모집중";
-        break;
-      case "scheduled":
-        status = "모집 예정";
-        break;
-      case "completed":
-        status = "완료";
-        break;
-      default:
-        status = "모집중";
-    }
-    
-    return {
-      position,
-      status,
-      workspaceId: workspace.id
-    };
-  }).sort((a, b) => {
-    // 모집중이 모집예정보다 먼저 오도록 정렬
-    const statusOrder = { "모집중": 0, "모집 예정": 1, "완료": 2 };
-    return statusOrder[a.status] - statusOrder[b.status];
-  });
+  // 워크스페이스 데이터를 JobPosting 형태로 변환 (평가완료 제외)
+  const jobPostings: JobPosting[] = workspaceData
+    .filter(workspace => workspace.status !== "evaluation-completed") // 평가완료 제외
+    .map(workspace => {
+      // 직무명 추출 (team에서 마지막 부분)
+      const position = workspace.team.split(', ').pop() || workspace.title;
+      
+      let status: "모집중" | "모집 예정" | "모집완료" | "평가완료";
+      switch (workspace.status) {
+        case "recruiting":
+          status = "모집중";
+          break;
+        case "scheduled":
+          status = "모집 예정";
+          break;
+        case "recruitment-completed":
+          status = "모집완료";
+          break;
+        case "evaluation-completed":
+          status = "평가완료";
+          break;
+        default:
+          status = "모집중";
+      }
+      
+      return {
+        position,
+        status,
+        workspaceId: workspace.id
+      };
+    }).sort((a, b) => {
+      // 모집중 → 모집예정 → 모집완료 순으로 정렬
+      const statusOrder = { "모집중": 0, "모집 예정": 1, "모집완료": 2, "평가완료": 3 };
+      return statusOrder[a.status] - statusOrder[b.status];
+    });
 
   // 빈 상태 처리
   if (jobPostings.length === 0) {

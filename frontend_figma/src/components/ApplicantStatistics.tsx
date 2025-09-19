@@ -43,7 +43,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
 }
 
 interface ApplicantStatisticsProps {

@@ -42,6 +42,7 @@ public class JobPostingService {
     private final CoverLetterQuestionCriterionDetailRepository coverLetterQuestionCriterionDetailRepository;
     private final CompanyRepository companyRepository;
 
+
     @Value("${fastapi.base-url:http://localhost:8000}")
     private String fastApiBaseUrl;
 
@@ -258,86 +259,98 @@ public class JobPostingService {
         existingJobPosting.setAiAutomaticEvaluation(request.getAiAutomaticEvaluation());
         existingJobPosting.setManualReview(request.getManualReview());
         
-        // 날짜에 따라 상태 자동 설정 (수동 설정 무시)
-        PostingStatus updatedStatus = determinePostingStatus(existingJobPosting, LocalDateTime.now());
-        existingJobPosting.setPostingStatus(updatedStatus);
-
-        // 기존 ResumeItems 삭제
-        resumeItemRepository.deleteByJobPostingId(id);
-
-        // 새로운 ResumeItems 저장
-        if (request.getResumeItems() != null) {
-            request.getResumeItems().forEach(resumeItemDto -> {
-                ResumeItem resumeItem = ResumeItem.builder()
-                        .name(resumeItemDto.getName())
-                        .type(resumeItemDto.getType())
-                        .isRequired(resumeItemDto.getIsRequired())
-                        .maxScore(resumeItemDto.getMaxScore())
-                        .jobPosting(existingJobPosting)
-                        .build();
-
-                ResumeItem savedResumeItem = resumeItemRepository.save(resumeItem);
-
-                // ResumeItemCriterions 저장
-                if (resumeItemDto.getCriteria() != null) {
-                    resumeItemDto.getCriteria().forEach(criterionDto -> {
-                        ResumeItemCriterion criterion = ResumeItemCriterion.builder()
-                                .grade(criterionDto.getGrade())
-                                .description(criterionDto.getDescription())
-                                .scorePerGrade(criterionDto.getScorePerGrade())
-                                .resumeItem(savedResumeItem)
-                                .build();
-
-                        resumeItemCriterionRepository.save(criterion);
-                    });
-                }
-            });
+        // 상태 업데이트 (요청에서 받은 상태 사용)
+        if (request.getPostingStatus() != null) {
+            log.info("채용공고 상태 수동 업데이트: {} -> {}", existingJobPosting.getPostingStatus(), request.getPostingStatus());
+            existingJobPosting.setPostingStatus(request.getPostingStatus());
+        } else {
+            // 상태가 제공되지 않은 경우에만 자동 설정
+            PostingStatus updatedStatus = determinePostingStatus(existingJobPosting, LocalDateTime.now());
+            log.info("채용공고 상태 자동 업데이트: {} -> {}", existingJobPosting.getPostingStatus(), updatedStatus);
+            existingJobPosting.setPostingStatus(updatedStatus);
         }
 
-        // 기존 CoverLetterQuestions 삭제
-        coverLetterQuestionRepository.deleteByJobPostingId(id);
+        // 기존 ResumeItems와 CoverLetterQuestions는 삭제하지 않고 상태만 업데이트
+        // (기존 지원서 데이터 보존을 위해)
+        
+        // 새로운 ResumeItems는 기존에 없는 경우에만 추가
+        if (request.getResumeItems() != null) {
+            List<ResumeItem> existingResumeItems = resumeItemRepository.findByJobPostingId(id);
+            if (existingResumeItems.isEmpty()) {
+                // 기존 항목이 없는 경우에만 새로 추가
+                request.getResumeItems().forEach(resumeItemDto -> {
+                    ResumeItem resumeItem = ResumeItem.builder()
+                            .name(resumeItemDto.getName())
+                            .type(resumeItemDto.getType())
+                            .isRequired(resumeItemDto.getIsRequired())
+                            .maxScore(resumeItemDto.getMaxScore())
+                            .jobPosting(existingJobPosting)
+                            .build();
 
-        // 새로운 CoverLetterQuestions 저장
-        if (request.getCoverLetterQuestions() != null) {
-            request.getCoverLetterQuestions().forEach(questionDto -> {
-                CoverLetterQuestion question = CoverLetterQuestion.builder()
-                        .content(questionDto.getContent())
-                        .isRequired(questionDto.getIsRequired())
-                        .maxCharacters(questionDto.getMaxCharacters())
-                        .jobPosting(existingJobPosting)
-                        .build();
+                    ResumeItem savedResumeItem = resumeItemRepository.save(resumeItem);
 
-                CoverLetterQuestion savedQuestion = coverLetterQuestionRepository.save(question);
-
-                // CoverLetterQuestionCriterions 저장
-                if (questionDto.getCriteria() != null && !questionDto.getCriteria().isEmpty()) {
-                    questionDto.getCriteria().forEach(criterionDto -> {
-                        if (criterionDto.getName() != null && !criterionDto.getName().trim().isEmpty()) {
-                            CoverLetterQuestionCriterion criterion = CoverLetterQuestionCriterion.builder()
-                                    .name(criterionDto.getName())
-                                    .overallDescription(criterionDto.getOverallDescription())
-                                    .coverLetterQuestion(savedQuestion)
+                    // ResumeItemCriterions 저장
+                    if (resumeItemDto.getCriteria() != null) {
+                        resumeItemDto.getCriteria().forEach(criterionDto -> {
+                            ResumeItemCriterion criterion = ResumeItemCriterion.builder()
+                                    .grade(criterionDto.getGrade())
+                                    .description(criterionDto.getDescription())
+                                    .scorePerGrade(criterionDto.getScorePerGrade())
+                                    .resumeItem(savedResumeItem)
                                     .build();
 
-                            CoverLetterQuestionCriterion savedCriterion = coverLetterQuestionCriterionRepository.save(criterion);
+                            resumeItemCriterionRepository.save(criterion);
+                        });
+                    }
+                });
+            }
+        }
 
-                            // CoverLetterQuestionCriterionDetails 저장
-                            if (criterionDto.getDetails() != null && !criterionDto.getDetails().isEmpty()) {
-                                criterionDto.getDetails().forEach(detailDto -> {
-                                    CoverLetterQuestionCriterionDetail detail = CoverLetterQuestionCriterionDetail.builder()
-                                            .grade(detailDto.getGrade())
-                                            .description(detailDto.getDescription())
-                                            .scorePerGrade(detailDto.getScorePerGrade())
-                                            .coverLetterQuestionCriterion(savedCriterion)
-                                            .build();
+        // 새로운 CoverLetterQuestions는 기존에 없는 경우에만 추가
+        if (request.getCoverLetterQuestions() != null) {
+            List<CoverLetterQuestion> existingQuestions = coverLetterQuestionRepository.findByJobPostingId(id);
+            if (existingQuestions.isEmpty()) {
+                // 기존 질문이 없는 경우에만 새로 추가
+                request.getCoverLetterQuestions().forEach(questionDto -> {
+                    CoverLetterQuestion question = CoverLetterQuestion.builder()
+                            .content(questionDto.getContent())
+                            .isRequired(questionDto.getIsRequired())
+                            .maxCharacters(questionDto.getMaxCharacters())
+                            .jobPosting(existingJobPosting)
+                            .build();
 
-                                    coverLetterQuestionCriterionDetailRepository.save(detail);
-                                });
+                    CoverLetterQuestion savedQuestion = coverLetterQuestionRepository.save(question);
+
+                    // CoverLetterQuestionCriterions 저장
+                    if (questionDto.getCriteria() != null && !questionDto.getCriteria().isEmpty()) {
+                        questionDto.getCriteria().forEach(criterionDto -> {
+                            if (criterionDto.getName() != null && !criterionDto.getName().trim().isEmpty()) {
+                                CoverLetterQuestionCriterion criterion = CoverLetterQuestionCriterion.builder()
+                                        .name(criterionDto.getName())
+                                        .overallDescription(criterionDto.getOverallDescription())
+                                        .coverLetterQuestion(savedQuestion)
+                                        .build();
+
+                                CoverLetterQuestionCriterion savedCriterion = coverLetterQuestionCriterionRepository.save(criterion);
+
+                                // CoverLetterQuestionCriterionDetails 저장
+                                if (criterionDto.getDetails() != null && !criterionDto.getDetails().isEmpty()) {
+                                    criterionDto.getDetails().forEach(detailDto -> {
+                                        CoverLetterQuestionCriterionDetail detail = CoverLetterQuestionCriterionDetail.builder()
+                                                .grade(detailDto.getGrade())
+                                                .description(detailDto.getDescription())
+                                                .scorePerGrade(detailDto.getScorePerGrade())
+                                                .coverLetterQuestionCriterion(savedCriterion)
+                                                .build();
+
+                                        coverLetterQuestionCriterionDetailRepository.save(detail);
+                                    });
+                                }
                             }
-                        }
-                    });
-                }
-            });
+                        });
+                    }
+                });
+            }
         }
 
         JobPosting updatedJobPosting = jobPostingRepository.save(existingJobPosting);

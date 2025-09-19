@@ -60,9 +60,9 @@ export enum ResumeItemType {
 // 등급 열거형
 export enum Grade {
   EXCELLENT = 'EXCELLENT',
+  GOOD = 'GOOD',
   NORMAL = 'NORMAL',
-  INSUFFICIENT = 'INSUFFICIENT',
-  LACK = 'LACK'
+  POOR = 'POOR'
 }
 
 // 이력서 항목 평가 기준
@@ -119,6 +119,8 @@ export interface JobPostingResponseDto {
   educationRequirements: string;
   requiredSkills: string;
   totalScore: number;
+  resumeScoreWeight: number;
+  coverLetterScoreWeight: number;
   passingScore: number;
   aiAutomaticEvaluation: boolean;
   manualReview: boolean;
@@ -126,6 +128,7 @@ export interface JobPostingResponseDto {
   postingStatus: PostingStatus;
   companyId: number;
   companyName: string;
+  applicationCount: number; // 지원서 수 추가
   resumeItems: ResumeItemResponseDto[];
   coverLetterQuestions: CoverLetterQuestionResponseDto[];
 }
@@ -207,6 +210,76 @@ export interface ApplicationCreateRequestDto {
   applicantEmail: string;
   resumeItemAnswers: ResumeItemAnswerCreateDto[];
   coverLetterQuestionAnswers: CoverLetterQuestionAnswerCreateDto[];
+}
+
+// 평가 결과 관련 타입
+export interface EvaluationResultDto {
+  applicantId: number;
+  applicantName: string;
+  applicantEmail: string;
+  applicationId: number;
+  jobPostingId: number;
+  jobPostingTitle: string;
+  companyName: string;
+  resumeEvaluations: ResumeEvaluationDto[];
+  coverLetterQuestionEvaluations: CoverLetterQuestionEvaluationDto[];
+  overallAnalysis: OverallAnalysisDto;
+  // 백엔드에서 실제로 반환하는 필드들
+  total_score: number;
+  resume_scores: any; // JSON 문자열 또는 배열
+  cover_letter_scores: any; // JSON 문자열 또는 배열
+  overall_evaluation: any; // JSON 문자열 또는 객체
+}
+
+// 자기소개서 문항 데이터 타입
+export interface CoverLetterQuestionData {
+  coverLetterQuestionId: number;
+  questionContent: string;
+  answerContent: string;
+  keywords: string[];
+  summary: string;
+  answerEvaluations: any[];
+  charCount: string;
+  maxChars: number;
+  answerLength: number;
+}
+
+export interface CoverLetterQuestionsResponse {
+  applicationId: number;
+  applicantName: string;
+  coverLetterQuestions: CoverLetterQuestionData[];
+  totalQuestions: number;
+}
+
+export interface ResumeEvaluationDto {
+  resumeItemId: number;
+  resumeItemName: string;
+  resumeContent: string;
+  score: number;
+  maxScore: number;
+}
+
+export interface CoverLetterQuestionEvaluationDto {
+  coverLetterQuestionId: number;
+  keywords: string[];
+  summary: string;
+  answerEvaluations: CoverLetterAnswerEvaluationDto[];
+}
+
+export interface CoverLetterAnswerEvaluationDto {
+  evaluationCriteriaId: number;
+  evaluationCriteriaName: string;
+  grade: string;
+  evaluatedContent: string;
+  evaluationReason: string;
+}
+
+export interface OverallAnalysisDto {
+  overallEvaluation: string;
+  strengths: string[];
+  improvements: string[];
+  aiRecommendation: string;
+  aiReliability: number;
 }
 
 export interface ResumeItemAnswerCreateDto {
@@ -294,6 +367,83 @@ export const applicationApi = {
     const response = await api.get(`/applications/${applicationId}/details`);
     return response.data;
   },
+
+  // 지원서의 자기소개서 문항 데이터 조회
+  getCoverLetterQuestions: async (applicationId: number): Promise<CoverLetterQuestionsResponse> => {
+    const response = await api.get(`/applications/${applicationId}/cover-letter-questions`);
+    return response.data;
+  },
+  
+  // 지원서 평가 결과 조회
+  getApplicationEvaluationResult: async (applicationId: number): Promise<EvaluationResultDto | null> => {
+    try {
+      const response = await api.get(`/applications/${applicationId}/details`);
+      return response.data.evaluationResult || null;
+    } catch (error) {
+      console.error('평가 결과 조회 실패:', error);
+      return null;
+    }
+  },
+  
+  // 지원서 통계 조회
+  getApplicationStatistics: async (): Promise<{
+    totalApplications: number;
+    totalCompletedEvaluations: number;
+    totalPendingEvaluations: number;
+    totalCompletionRate: number;
+    jobPostingStatistics: Array<{
+      jobPostingId: number;
+      jobPostingTitle: string;
+      totalApplications: number;
+      completedEvaluations: number;
+      pendingEvaluations: number;
+      completionRate: number;
+      postingStatus: string;
+    }>;
+  }> => {
+    const response = await api.get('/applications/statistics');
+    return response.data;
+  },
+  
+  // 공고별 평가 기준 조회
+  getEvaluationCriteria: async (jobPostingId: number): Promise<{
+    jobPostingId: number;
+    jobPostingTitle: string;
+    totalScore: number;
+    resumeScoreWeight: number;
+    coverLetterScoreWeight: number;
+    passingScore: number;
+    resumeCriteria: Array<{
+      id: number;
+      name: string;
+      type: string;
+      isRequired: boolean;
+      maxScore: number;
+      criteria: Array<{
+        grade: string;
+        description: string;
+        scorePerGrade: number;
+      }>;
+    }>;
+    coverLetterCriteria: Array<{
+      id: number;
+      content: string;
+      isRequired: boolean;
+      maxCharacters: number;
+      criteria: Array<{
+        name: string;
+        overallDescription: string;
+        details: Array<{
+          grade: string;
+          description: string;
+          scorePerGrade: number;
+        }>;
+      }>;
+    }>;
+  }> => {
+    const response = await api.get(`/applications/job-postings/${jobPostingId}/evaluation-criteria`);
+    return response.data;
+  },
   
   // 지원서 평가 의견 및 상태 저장
   saveEvaluation: async (applicationId: number, evaluationData: { comment: string; status: string }): Promise<string> => {
@@ -311,28 +461,31 @@ export const applicationApi = {
 // 유틸리티 함수들
 export const apiUtils = {
   // 백엔드 PostingStatus를 프론트엔드 status로 변환
-  convertPostingStatus: (postingStatus: PostingStatus): 'recruiting' | 'scheduled' | 'completed' => {
+  convertPostingStatus: (postingStatus: PostingStatus): 'recruiting' | 'scheduled' | 'recruitment-completed' | 'evaluation-completed' => {
     switch (postingStatus) {
       case PostingStatus.IN_PROGRESS:
         return 'recruiting';
       case PostingStatus.SCHEDULED:
         return 'scheduled';
       case PostingStatus.CLOSED:
+        return 'recruitment-completed';
       case PostingStatus.EVALUATION_COMPLETE:
-        return 'completed';
+        return 'evaluation-completed';
       default:
         return 'scheduled';
     }
   },
   
   // 프론트엔드 status를 백엔드 PostingStatus로 변환
-  convertToPostingStatus: (status: 'recruiting' | 'scheduled' | 'completed'): PostingStatus => {
+  convertToPostingStatus: (status: 'recruiting' | 'scheduled' | 'recruitment-completed' | 'evaluation-completed'): PostingStatus => {
     switch (status) {
       case 'recruiting':
         return PostingStatus.IN_PROGRESS;
       case 'scheduled':
         return PostingStatus.SCHEDULED;
-      case 'completed':
+      case 'recruitment-completed':
+        return PostingStatus.CLOSED;
+      case 'evaluation-completed':
         return PostingStatus.EVALUATION_COMPLETE;
       default:
         return PostingStatus.SCHEDULED;

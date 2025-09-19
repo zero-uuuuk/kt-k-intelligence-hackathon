@@ -1,6 +1,5 @@
 package com.jangyeonguk.backend.dto.evaluation;
 
-import com.jangyeonguk.backend.domain.resume.Grade;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,8 +22,6 @@ public class EvaluationResultDto {
     // 2. 지원서 정보
     private Long applicationId;
     private Long jobPostingId;
-    private String jobPostingTitle;
-    private String companyName;
 
     // 3. 이력서 평가 결과
     private List<ResumeEvaluationDto> resumeEvaluations;
@@ -43,7 +40,6 @@ public class EvaluationResultDto {
         private String resumeItemName;
         private String resumeContent;
         private Integer score; // 지원자 점수
-        private Integer maxScore; // 최대 점수
     }
 
     @Data
@@ -60,9 +56,8 @@ public class EvaluationResultDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CoverLetterAnswerEvaluationDto {
-        private Long evaluationCriteriaId; // 평가 기준 ID
         private String evaluationCriteriaName; // 평가 기준 이름
-        private Grade grade; // 평가 기준 세부 이름 (Grade enum)
+        private String grade; // 'EXCELLENT', 'GOOD', 'NORMAL', 'POOR'
         private String evaluatedContent; // 평가가 된 자기소개서 내 내용
         private String evaluationReason; // 그렇게 평가한 이유
     }

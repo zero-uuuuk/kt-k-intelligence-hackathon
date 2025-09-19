@@ -34,7 +34,7 @@ interface WorkspaceCard {
   period: string;
   team: string;
   applicants?: number;
-  status: "recruiting" | "scheduled" | "completed";
+  status: "recruiting" | "scheduled" | "recruitment-completed" | "evaluation-completed";
   evaluationDeadline?: string; // 서류 평가 마감일 추가
 }
 
@@ -162,10 +162,11 @@ export default function App() {
       period: `${formatDate(jobPosting.applicationStartDate)} - ${formatDate(jobPosting.applicationEndDate)}`,
       team: `${jobPosting.teamDepartment}, ${getPositionName(jobPosting.jobRole)}`,
       applicants: 0, // 실제 지원자 수는 별도 API로 조회
+      status: apiUtils.convertPostingStatus(jobPosting.postingStatus), // 상태 추가
       evaluationDeadline: jobPosting.evaluationEndDate,
       publicLinkUrl: jobPosting.publicLinkUrl // publicLinkUrl 추가
     }));
-  }, [jobPostings]);
+  }, [jobPostings, apiUtils]);
 
   // 상태 업데이트를 강제하기 위한 상태
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -174,16 +175,16 @@ export default function App() {
   // 동적으로 status가 계산된 워크스페이스 데이터
   const workspaceData = useMemo(() => {
     return baseWorkspaceData.map(workspace => {
-      // API에서 가져온 jobPosting의 postingStatus를 사용하거나, 기존 로직 사용
+      // API에서 가져온 jobPosting의 지원서 수 업데이트
       const jobPosting = jobPostings.find(jp => jp.id.toString() === workspace.id);
-      const status = jobPosting ? apiUtils.convertPostingStatus(jobPosting.postingStatus) : calculateWorkspaceStatus(workspace.period);
       
       return {
         ...workspace,
-        status
+        // API에서 가져온 지원서 수를 사용하거나, 기존 값 유지
+        applicants: jobPosting ? jobPosting.applicationCount : workspace.applicants
       };
     });
-  }, [baseWorkspaceData, jobPostings, apiUtils, forceUpdate]);
+  }, [baseWorkspaceData, jobPostings, forceUpdate]);
 
   // 매분마다 상태를 체크하여 자동으로 업데이트
   useEffect(() => {
@@ -246,13 +247,15 @@ export default function App() {
     const totalWorkspaces = workspaceData.length;
     const recruitingCount = workspaceData.filter(w => w.status === 'recruiting').length;
     const scheduledCount = workspaceData.filter(w => w.status === 'scheduled').length;
-    const completedCount = workspaceData.filter(w => w.status === 'completed').length + completedWorkspaces.length;
+    const recruitmentCompletedCount = workspaceData.filter(w => w.status === 'recruitment-completed').length;
+    const evaluationCompletedCount = workspaceData.filter(w => w.status === 'evaluation-completed').length + completedWorkspaces.length;
 
     return {
       totalWorkspaces,
       recruitingCount,
       scheduledCount,
-      completedCount
+      recruitmentCompletedCount,
+      evaluationCompletedCount
     };
   }, [workspaceData, completedWorkspaces]);
 
@@ -382,9 +385,6 @@ export default function App() {
           <div className="p-4 h-full">
             <ApplicationEvaluation 
               onViewApplication={handleViewApplication}
-              completedWorkspaces={completedWorkspaces}
-              workspaceData={workspaceData}
-              workspaceEvaluationCriteria={workspaceEvaluationCriteria}
             />
           </div>
         );
@@ -455,9 +455,9 @@ export default function App() {
                   />
                   <StatCard 
                     title="완료된 공고"
-                    value={statsData.completedCount}
+                    value={statsData.recruitmentCompletedCount + statsData.evaluationCompletedCount}
                     icon={Star}
-                    color="orange"
+                    color="purple"
                     onClick={() => setActiveMenu('workspace')}
                   />
                 </div>

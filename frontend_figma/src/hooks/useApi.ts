@@ -10,6 +10,8 @@ import {
   JobPostingCreateRequestDto,
   ApplicationCreateRequestDto,
   CompanyCreateRequestDto,
+  EvaluationResultDto,
+  CoverLetterQuestionsResponse,
   apiUtils
 } from '../services/api';
 import { toast } from 'sonner';
@@ -100,6 +102,23 @@ export const useApplicationsByJobPosting = (jobPostingId: number) => {
   });
 };
 
+// 지원서 통계 조회
+export const useApplicationStatistics = () => {
+  return useQuery({
+    queryKey: ['applicationStatistics'],
+    queryFn: applicationApi.getApplicationStatistics,
+  });
+};
+
+// 공고별 평가 기준 조회
+export const useEvaluationCriteria = (jobPostingId: number) => {
+  return useQuery({
+    queryKey: ['evaluationCriteria', jobPostingId],
+    queryFn: () => applicationApi.getEvaluationCriteria(jobPostingId),
+    enabled: !!jobPostingId,
+  });
+};
+
 // 지원서 상세 정보 조회
 export const useApplicationDetails = (applicationId: number) => {
   return useQuery({
@@ -177,6 +196,24 @@ export const useApplicationSubmission = () => {
       console.error('지원서 제출 실패:', error);
       toast.error('지원서 제출에 실패했습니다. 다시 시도해주세요.');
     }
+  });
+};
+
+// 지원서 평가 결과 조회
+export const useApplicationEvaluationResult = (applicationId: number | null) => {
+  return useQuery<EvaluationResultDto | null>({
+    queryKey: ['applicationEvaluationResult', applicationId],
+    queryFn: () => applicationId ? applicationApi.getApplicationEvaluationResult(applicationId) : Promise.resolve(null),
+    enabled: !!applicationId,
+  });
+};
+
+// 자기소개서 문항 데이터 조회
+export const useCoverLetterQuestions = (applicationId: number | null) => {
+  return useQuery<CoverLetterQuestionsResponse | null>({
+    queryKey: ['coverLetterQuestions', applicationId],
+    queryFn: () => applicationId ? applicationApi.getCoverLetterQuestions(applicationId) : Promise.resolve(null),
+    enabled: !!applicationId,
   });
 };
 

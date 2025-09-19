@@ -34,7 +34,7 @@ interface EvaluationCriteriaItem {
   criteria: {
     excellent: { score: number; description: string };
     good: { score: number; description: string };
-    fair: { score: number; description: string };
+    normal: { score: number; description: string };
     poor: { score: number; description: string };
   };
 }
@@ -132,18 +132,54 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
     };
   });
 
-  // 이력서 필드
+  // 이력서 필드 (이름, 이메일, 학력은 고정)
   const [resumeFields, setResumeFields] = useState<ResumeField[]>([
     { id: "1", name: "이름", type: "text", required: true },
     { id: "2", name: "이메일", type: "text", required: true },
-    { id: "3", name: "전화번호", type: "text", required: true },
-    { id: "4", name: "대학교", type: "text", required: true },
-    { id: "5", name: "학점", type: "number", required: true, maxScore: 10 },
-    { id: "6", name: "자격증", type: "text", required: false, maxScore: 7 },
-    { id: "7", name: "어학", type: "text", required: false, maxScore: 5 },
-    { id: "8", name: "수상경력", type: "text", required: false, maxScore: 8 },
-    { id: "9", name: "경력", type: "text", required: false, maxScore: 8 },
-    { id: "10", name: "봉사시간", type: "number", required: false, maxScore: 10 }
+    { 
+      id: "3", 
+      name: "학력", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "4", 
+      name: "학점", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "5", 
+      name: "자격증", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "6", 
+      name: "어학", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "7", 
+      name: "수상경력", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "8", 
+      name: "경력", 
+      type: "text", 
+      required: true
+    },
+    { 
+      id: "9", 
+      name: "봉사시간", 
+      type: "text", 
+      required: false
+    },
+    { id: "10", name: "전화번호", type: "text", required: true },
+    { id: "11", name: "대학교", type: "text", required: true }
   ]);
 
   // 자기소개서 문항
@@ -181,7 +217,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 10, description: "박사 학위 (전공 일치)" },
         good: { score: 8, description: "석사 학위 (전공 일치)" },
-        fair: { score: 6, description: "학사 학위 (전공 일치)" },
+        normal: { score: 6, description: "학사 학위 (전공 일치)" },
         poor: { score: 2, description: "전문학사/고등학교 졸업" }
       }
     },
@@ -192,7 +228,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 8, description: "3년 이상 관련 경험" },
         good: { score: 6, description: "1-3년 관련 경험" },
-        fair: { score: 4, description: "1년 미만 관련 경험" },
+        normal: { score: 4, description: "1년 미만 관련 경험" },
         poor: { score: 0, description: "관련 경험 없음" }
       }
     },
@@ -203,7 +239,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 7, description: "국가기술자격 (기사 이상)" },
         good: { score: 5, description: "국가기술자격 (산업기사)" },
-        fair: { score: 4, description: "민간자격증 (관련 분야)" },
+        normal: { score: 4, description: "민간자격증 (관련 분야)" },
         poor: { score: 0, description: "관련 자격증 없음" }
       }
     },
@@ -214,7 +250,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 10, description: "100시간 이상" },
         good: { score: 7, description: "50-99시간" },
-        fair: { score: 5, description: "20-49시간" },
+        normal: { score: 5, description: "20-49시간" },
         poor: { score: 0, description: "봉사 경험 없음" }
       }
     }
@@ -229,7 +265,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 25, description: "명확한 동기, 구체적 목표, 회사 기여 방안 제시" },
         good: { score: 19, description: "일반적인 동기, 추상적 목표" },
-        fair: { score: 14, description: "모호한 동기, 구체성 부족" },
+        normal: { score: 14, description: "모호한 동기, 구체성 부족" },
         poor: { score: 9, description: "불분명한 동기, 준비 부족" }
       }
     },
@@ -240,7 +276,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 25, description: "구체적 사례, 깊은 성찰, 개선 계획 명확" },
         good: { score: 19, description: "일반적 장단점, 보통 수준의 성찰" },
-        fair: { score: 14, description: "추상적 표현, 사례 부족" },
+        normal: { score: 14, description: "추상적 표현, 사례 부족" },
         poor: { score: 9, description: "형식적 답변, 성찰 부족" }
       }
     },
@@ -251,7 +287,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 4, description: "모든 항목 300자 이상, 적정 분량" },
         good: { score: 3, description: "1-2개 항목 300자 미만" },
-        fair: { score: 2, description: "3개 이상 항목 300자 미만" },
+        normal: { score: 2, description: "3개 이상 항목 300자 미만" },
         poor: { score: 1, description: "대부분 항목 200자 미만" }
       }
     }
@@ -303,7 +339,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 10, description: "" },
         good: { score: 7, description: "" },
-        fair: { score: 4, description: "" },
+        normal: { score: 4, description: "" },
         poor: { score: 0, description: "" }
       }
     };
@@ -329,7 +365,7 @@ export function JobPostingForm({ onBack, onSave, editingWorkspace, isEditMode = 
       criteria: {
         excellent: { score: 25, description: "" },
         good: { score: 19, description: "" },
-        fair: { score: 14, description: "" },
+        normal: { score: 14, description: "" },
         poor: { score: 9, description: "" }
       }
     };

@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { 
   Building2, 
   MapPin, 
@@ -38,6 +39,37 @@ interface ApplicationFormData {
   coverLetterQuestions: { [key: string]: string };
 }
 
+interface EducationData {
+  university: string;
+  department: string;
+  status: string;
+}
+
+interface GradeData {
+  majorType: string; // '인문' 또는 '이공'
+  grade: string; // 학점 (예: '3.9')
+}
+
+interface LanguageData {
+  testType: string; // 'TOEIC' 또는 'OPIc'
+  score: string; // TOEIC 점수 또는 OPIc 등급
+}
+
+interface AwardData {
+  scale: string; // 'KT/정부·전국 규모', '대기업·전문협회', '교내', '동아리·지역'
+  content: string; // 실제 수상 내용
+}
+
+interface ExperienceData {
+  company: string; // 회사명
+  position: string; // 직무
+  duration: string; // 기간 (개월 수)
+}
+
+interface VolunteerData {
+  hours: string; // 봉사시간 (숫자만)
+}
+
 const ApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -48,6 +80,43 @@ const ApplicationForm: React.FC = () => {
     applicantEmail: '',
     resumeItems: {},
     coverLetterQuestions: {}
+  });
+
+  // 학력 데이터 상태
+  const [educationData, setEducationData] = useState<EducationData>({
+    university: '',
+    department: '',
+    status: ''
+  });
+
+  // 학점 데이터 상태
+  const [gradeData, setGradeData] = useState<GradeData>({
+    majorType: '',
+    grade: ''
+  });
+
+  // 어학 데이터 상태
+  const [languageData, setLanguageData] = useState<LanguageData>({
+    testType: '',
+    score: ''
+  });
+
+  // 수상경력 데이터 상태
+  const [awardData, setAwardData] = useState<AwardData>({
+    scale: '',
+    content: ''
+  });
+
+  // 경력 데이터 상태
+  const [experienceData, setExperienceData] = useState<ExperienceData>({
+    company: '',
+    position: '',
+    duration: ''
+  });
+
+  // 봉사시간 데이터 상태
+  const [volunteerData, setVolunteerData] = useState<VolunteerData>({
+    hours: ''
   });
 
   const { data: jobPosting, isLoading, error } = usePublicJobPosting(parseInt(id || '0'));
@@ -103,6 +172,168 @@ const ApplicationForm: React.FC = () => {
     }));
   };
 
+  const handleEducationChange = (field: keyof EducationData, value: string) => {
+    setEducationData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleGradeChange = (field: keyof GradeData, value: string) => {
+    setGradeData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleLanguageChange = (field: keyof LanguageData, value: string) => {
+    setLanguageData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleAwardChange = (field: keyof AwardData, value: string) => {
+    setAwardData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleExperienceChange = (field: keyof ExperienceData, value: string) => {
+    setExperienceData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleVolunteerChange = (field: keyof VolunteerData, value: string) => {
+    setVolunteerData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // 학력 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const educationItem = jobPosting.resumeItems?.find(item => item.name === '학력');
+      if (educationItem) {
+        const combinedEducation = educationData.university && educationData.department && educationData.status
+          ? `${educationData.university} ${educationData.department} ${educationData.status}`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [educationItem.id.toString()]: combinedEducation
+          }
+        }));
+      }
+    }
+  }, [educationData, jobPosting]);
+
+  // 학점 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const gradeItem = jobPosting.resumeItems?.find(item => item.name === '학점');
+      if (gradeItem) {
+        const combinedGrade = gradeData.majorType && gradeData.grade
+          ? `${gradeData.majorType} ${gradeData.grade}`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [gradeItem.id.toString()]: combinedGrade
+          }
+        }));
+      }
+    }
+  }, [gradeData, jobPosting]);
+
+  // 어학 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const languageItem = jobPosting.resumeItems?.find(item => item.name === '어학');
+      if (languageItem) {
+        const combinedLanguage = languageData.testType && languageData.score
+          ? `${languageData.testType} ${languageData.score}`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [languageItem.id.toString()]: combinedLanguage
+          }
+        }));
+      }
+    }
+  }, [languageData, jobPosting]);
+
+  // 수상경력 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const awardItem = jobPosting.resumeItems?.find(item => item.name === '수상경력');
+      if (awardItem) {
+        const combinedAward = awardData.scale && awardData.content
+          ? `${awardData.scale}, ${awardData.content}`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [awardItem.id.toString()]: combinedAward
+          }
+        }));
+      }
+    }
+  }, [awardData, jobPosting]);
+
+  // 경력 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const experienceItem = jobPosting.resumeItems?.find(item => item.name === '경력');
+      if (experienceItem) {
+        const combinedExperience = experienceData.company && experienceData.position && experienceData.duration
+          ? `${experienceData.company}, ${experienceData.position}, ${experienceData.duration}개월`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [experienceItem.id.toString()]: combinedExperience
+          }
+        }));
+      }
+    }
+  }, [experienceData, jobPosting]);
+
+  // 봉사시간 데이터가 변경될 때마다 해당 항목의 값을 업데이트
+  useEffect(() => {
+    if (jobPosting) {
+      const volunteerItem = jobPosting.resumeItems?.find(item => item.name === '봉사시간');
+      if (volunteerItem) {
+        const combinedVolunteer = volunteerData.hours
+          ? `${volunteerData.hours}시간`
+          : '';
+        
+        setFormData(prev => ({
+          ...prev,
+          resumeItems: {
+            ...prev.resumeItems,
+            [volunteerItem.id.toString()]: combinedVolunteer
+          }
+        }));
+      }
+    }
+  }, [volunteerData, jobPosting]);
+
   const handleSubmit = async () => {
     if (!jobPosting || !formData.applicantName || !formData.applicantEmail) {
       toast.error('이름과 이메일을 입력해주세요.');
@@ -113,11 +344,13 @@ const ApplicationForm: React.FC = () => {
       const applicationData = {
         applicantName: formData.applicantName,
         applicantEmail: formData.applicantEmail,
-        resumeItemAnswers: jobPosting.resumeItems?.map(item => ({
-          resumeItemId: item.id,
-          resumeItemName: item.name,
-          resumeContent: formData.resumeItems[item.id.toString()] || ''
-        })) || [],
+        resumeItemAnswers: jobPosting.resumeItems
+          ?.filter(item => item.name !== '이름' && item.name !== '이메일')
+          ?.map(item => ({
+            resumeItemId: item.id,
+            resumeItemName: item.name,
+            resumeContent: formData.resumeItems[item.id.toString()] || ''
+          })) || [],
         coverLetterQuestionAnswers: jobPosting.coverLetterQuestions?.map(question => ({
           coverLetterQuestionId: question.id,
           questionContent: question.content,
@@ -159,6 +392,308 @@ const ApplicationForm: React.FC = () => {
 
   const renderResumeItemInput = (item: ResumeItemResponseDto) => {
     const value = formData.resumeItems[item.id.toString()] || '';
+
+    // 학력 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '학력') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="university" className="text-sm font-medium text-gray-700">
+                대학교
+              </Label>
+              <Input
+                id="university"
+                type="text"
+                value={educationData.university}
+                onChange={(e) => handleEducationChange('university', e.target.value)}
+                placeholder="예: 서울대학교"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="department" className="text-sm font-medium text-gray-700">
+                학과/학부
+              </Label>
+              <Input
+                id="department"
+                type="text"
+                value={educationData.department}
+                onChange={(e) => handleEducationChange('department', e.target.value)}
+                placeholder="예: 컴퓨터공학과"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="status" className="text-sm font-medium text-gray-700">
+                재적상태
+              </Label>
+              <Select value={educationData.status} onValueChange={(value) => handleEducationChange('status', value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="졸업">졸업</SelectItem>
+                  <SelectItem value="재학">재학</SelectItem>
+                  <SelectItem value="자퇴">자퇴</SelectItem>
+                  <SelectItem value="휴학">휴학</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {educationData.university && educationData.department && educationData.status 
+              ? `${educationData.university} ${educationData.department} ${educationData.status}`
+              : '모든 항목을 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // 학점 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '학점') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="majorType" className="text-sm font-medium text-gray-700">
+                전공 유형
+              </Label>
+              <Select value={gradeData.majorType} onValueChange={(value) => handleGradeChange('majorType', value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="전공 유형을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="인문">인문</SelectItem>
+                  <SelectItem value="이공">이공</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="grade" className="text-sm font-medium text-gray-700">
+                학점 (만점: 4.5)
+              </Label>
+              <Input
+                id="grade"
+                type="number"
+                step="0.1"
+                min="0"
+                max="4.5"
+                value={gradeData.grade}
+                onChange={(e) => handleGradeChange('grade', e.target.value)}
+                placeholder="예: 3.9"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {gradeData.majorType && gradeData.grade 
+              ? `${gradeData.majorType} ${gradeData.grade}`
+              : '전공 유형과 학점을 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // 어학 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '어학') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="testType" className="text-sm font-medium text-gray-700">
+                시험 유형
+              </Label>
+              <Select value={languageData.testType} onValueChange={(value) => handleLanguageChange('testType', value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="시험 유형을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TOEIC">TOEIC</SelectItem>
+                  <SelectItem value="OPIc">OPIc</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="score" className="text-sm font-medium text-gray-700">
+                {languageData.testType === 'TOEIC' ? 'TOEIC 점수' : languageData.testType === 'OPIc' ? 'OPIc 등급' : '점수/등급'}
+              </Label>
+              {languageData.testType === 'TOEIC' ? (
+                <Input
+                  id="score"
+                  type="number"
+                  min="0"
+                  max="990"
+                  value={languageData.score}
+                  onChange={(e) => handleLanguageChange('score', e.target.value)}
+                  placeholder="예: 850"
+                  className="mt-1"
+                />
+              ) : languageData.testType === 'OPIc' ? (
+                <Select value={languageData.score} onValueChange={(value) => handleLanguageChange('score', value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="등급을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AL">AL</SelectItem>
+                    <SelectItem value="IH">IH</SelectItem>
+                    <SelectItem value="IM3">IM3</SelectItem>
+                    <SelectItem value="IM2">IM2</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="score"
+                  type="text"
+                  value={languageData.score}
+                  onChange={(e) => handleLanguageChange('score', e.target.value)}
+                  placeholder="시험 유형을 먼저 선택하세요"
+                  className="mt-1"
+                  disabled
+                />
+              )}
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {languageData.testType && languageData.score 
+              ? `${languageData.testType} ${languageData.score}`
+              : '시험 유형과 점수/등급을 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // 수상경력 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '수상경력') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="scale" className="text-sm font-medium text-gray-700">
+                수상 규모
+              </Label>
+              <Select value={awardData.scale} onValueChange={(value) => handleAwardChange('scale', value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="수상 규모를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="KT/정부·전국 규모">KT/정부·전국 규모</SelectItem>
+                  <SelectItem value="대기업·전문협회">대기업·전문협회</SelectItem>
+                  <SelectItem value="교내">교내</SelectItem>
+                  <SelectItem value="동아리·지역">동아리·지역</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="content" className="text-sm font-medium text-gray-700">
+                수상 내용
+              </Label>
+              <Input
+                id="content"
+                type="text"
+                value={awardData.content}
+                onChange={(e) => handleAwardChange('content', e.target.value)}
+                placeholder="예: 삼성전자 주최 알고리즘 경진대회 동상"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {awardData.scale && awardData.content 
+              ? `${awardData.scale}, ${awardData.content}`
+              : '수상 규모와 내용을 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // 경력 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '경력') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="company" className="text-sm font-medium text-gray-700">
+                회사명
+              </Label>
+              <Input
+                id="company"
+                type="text"
+                value={experienceData.company}
+                onChange={(e) => handleExperienceChange('company', e.target.value)}
+                placeholder="예: 네이버 웹툰"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="position" className="text-sm font-medium text-gray-700">
+                직무
+              </Label>
+              <Input
+                id="position"
+                type="text"
+                value={experienceData.position}
+                onChange={(e) => handleExperienceChange('position', e.target.value)}
+                placeholder="예: 백엔드 엔지니어"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="duration" className="text-sm font-medium text-gray-700">
+                기간 (개월)
+              </Label>
+              <Input
+                id="duration"
+                type="number"
+                min="1"
+                value={experienceData.duration}
+                onChange={(e) => handleExperienceChange('duration', e.target.value)}
+                placeholder="예: 14"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {experienceData.company && experienceData.position && experienceData.duration
+              ? `${experienceData.company}, ${experienceData.position}, ${experienceData.duration}개월`
+              : '회사명, 직무, 기간을 모두 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // 봉사시간 항목에 대해서는 특별한 입력 폼 제공
+    if (item.name === '봉사시간') {
+      return (
+        <div className="space-y-4 mt-1">
+          <div className="max-w-xs">
+            <Label htmlFor="hours" className="text-sm font-medium text-gray-700">
+              봉사시간
+            </Label>
+            <Input
+              id="hours"
+              type="number"
+              min="0"
+              value={volunteerData.hours}
+              onChange={(e) => handleVolunteerChange('hours', e.target.value)}
+              placeholder="예: 50"
+              className="mt-1"
+            />
+          </div>
+          <div className="text-sm text-gray-500">
+            입력된 내용: {volunteerData.hours
+              ? `${volunteerData.hours}시간`
+              : '봉사시간을 입력해주세요'
+            }
+          </div>
+        </div>
+      );
+    }
 
     switch (item.type) {
       case 'NUMBER':
@@ -472,7 +1007,9 @@ const ApplicationForm: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-6">
                 {jobPosting.resumeItems && jobPosting.resumeItems.length > 0 ? (
-                  jobPosting.resumeItems.map((item) => (
+                  jobPosting.resumeItems
+                    .filter(item => item.name !== '이름' && item.name !== '이메일')
+                    .map((item) => (
                     <div key={item.id} className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-base font-medium">
