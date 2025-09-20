@@ -144,35 +144,35 @@ public class JobPostingResponseDto {
     public Map<String, Object> toFastApiEvaluationData() {
         Map<String, Object> evaluationData = new HashMap<>();
 
-        evaluationData.put("job_posting_id", this.id);
+        evaluationData.put("jobPostingId", this.id);
         evaluationData.put("title", this.title);
-        evaluationData.put("company_name", this.companyName);
-        evaluationData.put("job_role", this.jobRole);
-        evaluationData.put("total_score", this.totalScore);
-        evaluationData.put("passing_score", this.passingScore);
-        evaluationData.put("ai_automatic_evaluation", this.aiAutomaticEvaluation);
+        evaluationData.put("companyName", this.companyName);
+        evaluationData.put("jobRole", this.jobRole);
+        evaluationData.put("totalScore", this.totalScore);
+        evaluationData.put("passingScore", this.passingScore);
+        evaluationData.put("aiAutomaticEvaluation", this.aiAutomaticEvaluation);
 
         // 평가 규칙 추가
         Map<String, Object> evaluationRules = new HashMap<>();
-        evaluationRules.put("disqualification_criteria", List.of(
+        evaluationRules.put("disqualificationCriteria", List.of(
             "허위/과장된 내용 기재",
             "표절 또는 AI 생성물을 그대로 사용"
         ));
-        evaluationRules.put("tie_breaker_rule", List.of(
+        evaluationRules.put("tieBreakerRule", List.of(
             "직무적합(에세이 Q2)",
             "경력",
             "자격증",
             "어학"
         ));
-        evaluationRules.put("final_score_formula", Map.of(
-            "resume_weight", this.resumeScoreWeight / 100.0,
-            "cover_letter_questions_weight", this.coverLetterScoreWeight / 100.0
+        evaluationRules.put("finalScoreFormula", Map.of(
+            "resumeWeight", this.resumeScoreWeight / 100.0,
+            "coverLetterQuestionsWeight", this.coverLetterScoreWeight / 100.0
         ));
-        evaluationData.put("evaluation_rules", evaluationRules);
+        evaluationData.put("evaluationRules", evaluationRules);
 
         // 이력서 항목 데이터 (점수 관련 내용이 있는 항목만 포함)
         if (this.resumeItems != null) {
-            evaluationData.put("resume_items", this.resumeItems.stream()
+            evaluationData.put("resumeItems", this.resumeItems.stream()
                     .filter(item -> {
                         // 이름, 이메일 등 점수 관련 내용이 없는 항목은 제외
                         String itemName = item.getName();
@@ -197,8 +197,8 @@ public class JobPostingResponseDto {
                         itemData.put("id", item.getId());
                         itemData.put("name", item.getName());
                         itemData.put("type", item.getType());
-                        itemData.put("score_weight", item.getMaxScore()); // maxScore를 score_weight로 사용
-                        itemData.put("is_required", item.getIsRequired());
+                        itemData.put("scoreWeight", item.getMaxScore()); // maxScore를 scoreWeight로 사용
+                        itemData.put("isRequired", item.getIsRequired());
 
                         // 평가 기준 데이터
                         if (item.getCriteria() != null) {
@@ -207,7 +207,7 @@ public class JobPostingResponseDto {
                                         Map<String, Object> criterionData = new HashMap<>();
                                         criterionData.put("grade", criterion.getGrade());
                                         criterionData.put("description", criterion.getDescription());
-                                        criterionData.put("score_per_grade", criterion.getScorePerGrade());
+                                        criterionData.put("scorePerGrade", criterion.getScorePerGrade());
                                         return criterionData;
                                     })
                                     .collect(Collectors.toList()));
@@ -220,13 +220,13 @@ public class JobPostingResponseDto {
 
         // 자기소개서 질문 데이터
         if (this.coverLetterQuestions != null) {
-            evaluationData.put("cover_letter_questions", this.coverLetterQuestions.stream()
+            evaluationData.put("coverLetterQuestions", this.coverLetterQuestions.stream()
                     .map(question -> {
                         Map<String, Object> questionData = new HashMap<>();
                         questionData.put("id", question.getId());
                         questionData.put("content", question.getContent());
-                        questionData.put("is_required", question.getIsRequired());
-                        questionData.put("max_characters", question.getMaxCharacters());
+                        questionData.put("isRequired", question.getIsRequired());
+                        questionData.put("maxCharacters", question.getMaxCharacters());
 
                         // 평가 기준 데이터 (새로운 구조: criteria -> details)
                         if (question.getCriteria() != null) {

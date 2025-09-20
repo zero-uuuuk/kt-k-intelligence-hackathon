@@ -6,7 +6,7 @@ import os
 import gc
 import re
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import chromadb
 # core/config.py에서 설정값을 가져오기 위한 import
 try:
@@ -44,21 +44,12 @@ class LLMManager:
     def load_model(self):
         if self.model is None or self.tokenizer is None:
             import torch
-            if torch.cuda.is_available():
-                print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (4-bit 양자화)")
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True, bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16
-                )
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name, quantization_config=bnb_config,
-                    device_map="auto", torch_dtype=torch.bfloat16
-                )
-            else:
-                print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (CPU 모드)")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name, torch_dtype=torch.float32
-                )
+            print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (CUDA 모드)")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name, 
+                device_map="auto", 
+                torch_dtype=torch.bfloat16
+            )
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, padding_side='left')
             self.tokenizer.pad_token = self.tokenizer.eos_token
             print("✅ P1 LLM 모델 로딩 완료.")
@@ -155,6 +146,7 @@ class P1_AssetBuilder:
     def generate_rag_data(self, output_path: str):
         """RAG에 사용될 데이터(rag_data.json)를 생성합니다."""
         print("[P1] RAG 데이터 생성을 시작합니다...")
+        BATCH_SIZE = 8
         rag_data = []
         
         print("  - (1/3) 평가 기준(criterion) 데이터를 생성 중...")
@@ -216,6 +208,7 @@ def upload_rag_data_to_db(rag_data_path: str):
     rag_data = load_json_file(rag_data_path)
     if not rag_data:
         print("⚠️ RAG 데이터 파일이 없어 업로드를 건너뜁니다.")
+        print("현재 rag_data_path: ", rag_data_path)
         return
 
     client = chromadb.PersistentClient(path=settings.DB_PATH)

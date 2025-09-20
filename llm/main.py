@@ -99,7 +99,7 @@ async def train_evaluation_criteria(
     """
     [P1] 평가 기준을 받아 평가 자산을 생성하고 RAG DB를 구축하는 '학습' API
     """
-    logger.info(f"P1 학습 요청 수신 - JobPosting ID: {request.job_posting_id}")
+    logger.info(f"P1 학습 요청 수신 - JobPosting ID: {request.jobPostingId}")
     
     # P1 파이프라인은 무거운 작업이므로 백그라운드에서 실행
     background_tasks.add_task(
