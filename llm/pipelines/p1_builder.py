@@ -9,7 +9,10 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import chromadb
 # core/config.py에서 설정값을 가져오기 위한 import
-from ..core.config import settings
+try:
+    from ..core.config import settings
+except ImportError:
+    from core.config import settings
 
 # --- P1용 헬퍼 함수 ---
 def load_json_file(filepath):
@@ -40,15 +43,22 @@ class LLMManager:
 
     def load_model(self):
         if self.model is None or self.tokenizer is None:
-            print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (4-bit 양자화)")
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True, bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16
-            )
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name, quantization_config=bnb_config,
-                device_map="auto", torch_dtype=torch.bfloat16
-            )
+            import torch
+            if torch.cuda.is_available():
+                print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (4-bit 양자화)")
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16
+                )
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name, quantization_config=bnb_config,
+                    device_map="auto", torch_dtype=torch.bfloat16
+                )
+            else:
+                print(f">>> P1 LLM 모델({self.model_name})을 로딩합니다. (CPU 모드)")
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name, torch_dtype=torch.float32
+                )
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, padding_side='left')
             self.tokenizer.pad_token = self.tokenizer.eos_token
             print("✅ P1 LLM 모델 로딩 완료.")

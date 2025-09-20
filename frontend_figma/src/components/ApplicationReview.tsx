@@ -385,7 +385,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
                  scoreLevel = 'positive';
                } else if (grade === 'NEGATIVE' || grade === 'negative') {
                  scoreLevel = 'negative';
-               } else {
+      } else {
                  scoreLevel = 'neutral';
                }
                
@@ -407,21 +407,21 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
              });
            }
            
-           return {
+        return {
              keyPoints,
              evaluationCriteria,
              suggestions: []
-           };
+        };
          }
        } catch (error) {
          console.error('coverLetterScores 파싱 오류:', error);
-       }
-     }
-     
+      }
+    }
+    
      // 기본값 (데이터가 없는 경우)
-     return {
+      return {
        keyPoints: [],
-       evaluationCriteria: {
+        evaluationCriteria: {
          '기본 평가': { 
            criteria: '기본 평가',
            reason: '평가 데이터를 불러오는 중입니다.',
@@ -469,7 +469,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
             ? JSON.parse(separateEvaluationResult.overallEvaluation) 
             : separateEvaluationResult.overallEvaluation;
           
-          return {
+    return {
             overallAssessment: overallEval.overallEvaluation || '종합 평가를 진행 중입니다.',
             strengths: overallEval.strengths && overallEval.strengths.length > 0 
               ? overallEval.strengths 
@@ -477,7 +477,7 @@ export function ApplicationReview({ onBack, onFinalEvaluation, currentWorkspaceI
             weaknesses: overallEval.improvements && overallEval.improvements.length > 0 
               ? overallEval.improvements 
               : ['개선점 분석을 진행 중입니다.'],
-            keyInsights: [
+      keyInsights: [
               'AI 분석을 통한 종합적인 평가 결과',
               '이력서와 자기소개서를 종합한 역량 분석',
               '지원자별 맞춤형 평가 기준 적용'

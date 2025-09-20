@@ -1,7 +1,11 @@
 # llm/dependencies.py
 
-from .pipelines.p2_evaluator import LLMManager, SimilarityEvaluator
-from .core.config import settings
+try:
+    from .pipelines.p2_evaluator import LLMManager, SimilarityEvaluator
+    from .core.config import settings
+except ImportError:
+    from pipelines.p2_evaluator import LLMManager, SimilarityEvaluator
+    from core.config import settings
 
 # --- 싱글톤 인스턴스 생성 ---
 # 서버 전체에서 공유될 유일한 인스턴스들을 미리 생성합니다.
